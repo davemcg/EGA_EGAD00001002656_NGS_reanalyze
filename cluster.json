@@ -1,0 +1,26 @@
+{
+	"__default__" :
+	{
+		"partition" : "norm",
+		"time" : "08:00:00",
+		"mem" : "8g",
+		"extra" : "",
+		"output"  : "00log/{rule}_{wildcards}.out",
+		"error" : "00log/{rule}_{wildcards}.err" 
+	},
+	"split_cram_by_rg" : {
+		"extra" : "--gres=lscratch:10"
+	},
+	"align" :
+	{
+		"time" : "24:00:00",
+		"mem" : "32g",
+		"extra" : "--gres=lscratch:100"
+	},
+	"merge_RG_bams_back_together" :
+	{
+		"time" : "24:00:00",
+		"mem" : "64g",
+		"extra" : "--gres=lscratch:100"
+	}
+}
