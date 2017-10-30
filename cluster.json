@@ -2,9 +2,9 @@
 	"__default__" :
 	{
 		"partition" : "norm",
-		"time" : "08:00:00",
-		"mem" : "8g",
-		"extra" : "",
+		"time" : "24:00:00",
+		"mem" : "64g",
+		"extra" : "--gres=lscratch:400",
 		"output"  : "00log/{rule}_{wildcards}.out",
 		"error" : "00log/{rule}_{wildcards}.err" 
 	},
@@ -21,6 +21,6 @@
 	{
 		"time" : "24:00:00",
 		"mem" : "64g",
-		"extra" : "--gres=lscratch:100"
+		"extra" : "--gres=lscratch:400"
 	}
 }
