@@ -7,7 +7,7 @@
 
 cd /data/mcgaugheyd/projects/nei/mcgaughey/EGA_EGAD00001002656
 
-module load smakemake || exit 1
+module load snakemake || exit 1
 
 sbcmd="sbatch --cpus-per-task={threads} \
 --mem={cluster.mem} \
@@ -18,7 +18,7 @@ sbcmd="sbatch --cpus-per-task={threads} \
 {cluster.extra}"
 
 
-snakemake -s ~/git/EGA_EGAD00001002656_NGS_reanalyze/Snakemake \
+snakemake -s ~/git/EGA_EGAD00001002656_NGS_reanalyze/Snakefile \
 -pr --local-cores 2 --jobs 999 \
 --cluster-config ~/git/EGA_EGAD00001002656_NGS_reanalyze/cluster.json \
---cluster "$sbcmd"  --latency-wait 120 --rerun-incomplete
+--cluster "$sbcmd"  --latency-wait 120 --rerun-incomplete 
