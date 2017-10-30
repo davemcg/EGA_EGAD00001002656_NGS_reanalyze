@@ -1,5 +1,8 @@
 from os.path import join
 
+configfile: "/home/mcgaugheyd/git/EGA_EGAD00001002656_NGS_reanalyze/config.yaml"
+
+
 
 def return_ID(wildcards):
     # returns the ID in the read group from the header
@@ -42,29 +45,32 @@ def build_RG(wildcards):
 SAMPLES, = glob_wildcards(join('cram/', '{sample}.bam.cram'))
 
 rule all:
-    input:
-        expand('bam/{sample}.realigned.bam', sample=SAMPLES)
+	input:
+		expand('GVCFs/{sample}.g.vcf.gz', sample=SAMPLES),
+		expand('GATK_metrics/{sample}.BQSRplots.pdf', sample=SAMPLES),
+		'GATK_metrics/multiqc_report'
+
 rule split_cram_by_rg:
-    input:
-        'cram/{sample}.bam.cram'
-    output:
-        'temp/lane_bam/{sample}.ID{rg_id}.bam'
-    shell:
-        """
-        # ref cache goes to ~/ by default. TERRIBLE
-        export REF_CACHE=/lscratch/$SLURM_JOB_ID/hts-refcache
-        
-        samtools view -b -r {wildcards.rg_id} {input} > {output}
-        """
-    message:
-        'echo {read_group_IDs}'
-        'echo {output}'
+	input:
+		'cram/{sample}.bam.cram'
+	output:
+		temp('temp/lane_bam/{sample}.ID{rg_id}.bam')
+	shell:
+		"""
+		# ref cache goes to ~/ by default. TERRIBLE
+		export REF_CACHE=/lscratch/$SLURM_JOB_ID/hts-refcache
+	
+		samtools view -b -r {wildcards.rg_id} {input} > {output}
+		"""
+	message:
+		'echo {read_group_IDs}'
+		'echo {output}'
 
 rule align:
     input:
         'temp/lane_bam/{sample}.ID{rg_id}.bam'
     output:
-        'temp/realigned/{sample}.ID{rg_id}.realigned.bam'
+        temp('temp/realigned/{sample}.ID{rg_id}.realigned.bam')
     threads: 8 
     params:
         ref = "/data/mcgaugheyd/genomes/1000G_phase2_GRCh37/human_g1k_v37_decoy.fasta"
@@ -85,7 +91,7 @@ rule merge_RG_bams_back_together:
     input:
         lane_bam_names
     output:
-        'bam/{sample}.realigned.bam'
+        temp('bam/{sample}.realigned.bam')
     threads: 4
     shell:
         """
@@ -101,3 +107,216 @@ rule merge_RG_bams_back_together:
                 O={output}
         """
 
+rule picard_clean_sam:
+# "Soft-clipping beyond-end-of-reference alignments and setting MAPQ to 0 for unmapped reads"
+	input:
+		'bam/{sample}.realigned.bam'
+	output:
+		temp('bam/{sample}.realigned.CleanSam.bam')
+	threads: 4
+	shell:
+		"""
+		module load picard/2.9.2
+		java -Xmx60g -XX:+UseG1GC -XX:ParallelGCThreads={threads} -jar $PICARD_JAR \
+			CleanSam \
+			TMP_DIR=/lscratch/$SLURM_JOB_ID \
+			INPUT={input} \
+			OUTPUT={output}
+		"""
+
+rule picard_fix_mate_information:
+# "Verify mate-pair information between mates and fix if needed."
+# also coord sorts
+	input:
+		'bam/{sample}.realigned.CleanSam.bam'
+	output:
+		temp('bam/{sample}.realigned.CleanSam.sorted.bam')
+	threads: 4
+	shell:
+		"""
+		module load picard/2.9.2
+		java -Xmx60g -XX:+UseG1GC -XX:ParallelGCThreads={threads} -jar $PICARD_JAR \
+		FixMateInformation \
+			TMP_DIR=/lscratch/$SLURM_JOB_ID \
+			SORT_ORDER=coordinate \
+			INPUT={input} \
+			OUTPUT={output}
+		"""
+
+rule picard_mark_dups:
+# Mark duplicate reads
+	input:
+		'bam/{sample}.realigned.CleanSam.sorted.bam'
+	output:
+		bam = temp('bam/{sample}.realigned.CleanSam.sorted.markDup.bam'),
+		metrics = 'GATK_metrics/{sample}.markDup.metrics'
+	threads: 4
+	shell:
+		"""
+		module load picard/2.9.2
+		java -Xmx60g -XX:+UseG1GC -XX:ParallelGCThreads={threads} -jar $PICARD_JAR \
+			MarkDuplicates \
+			INPUT={input} \
+			OUTPUT={output.bam} \
+			METRICS_FILE={output.metrics}
+		"""
+
+rule picard_bam_index:
+# Build bam index
+	input:
+		'bam/{sample}.realigned.CleanSam.sorted.markDup.bam'
+	output:
+		temp('bam/{sample}.realigned.CleanSam.sorted.markDup.bam.bai')
+	threads: 4
+	shell:
+		"""
+		module load picard/2.9.2
+		java -Xmx60g -XX:+UseG1GC -XX:ParallelGCThreads={threads} -jar $PICARD_JAR \
+		BuildBamIndex \
+			TMP_DIR=/lscratch/$SLURM_JOB_ID \
+			INPUT={input} \
+			OUTPUT={output}
+		"""
+
+rule gatk_realigner_target:
+# identify regions which need realignment
+	input:
+		'bam/{sample}.realigned.CleanSam.sorted.markDup.bam'
+	output:
+		temp('bam/{sample}.forIndexRealigner.intervals')
+	threads: 2
+	shell:
+		"""
+		module load GATK/3.5-0
+		GATK -m 8g RealignerTargetCreator -p {threads} \
+			-R {config[ref_genome]}  \
+			-I {input} \
+			--known {config[1000g_indels]} \
+			--known {config[mills_gold_indels]} \
+			-o {output}
+		"""
+
+rule gatk_indel_realigner:
+# realigns indels to improve quality
+	input:
+		bam = 'bam/{sample}.realigned.CleanSam.sorted.markDup.bam',
+		targets = 'bam/{sample}.forIndexRealigner.intervals'
+	output:
+		temp('bam/{sample}.realigned.CleanSam.sorted.markDup.gatk_realigner.bam')
+	threads: 2
+	shell:
+		"""
+		module load GATK/3.5-0
+		GATK -m 8g IndelRealigner -p {threads} \
+			-R {config[ref_genome]} \
+			-I {input.bam} \
+			--known {config[1000g_indels]} \
+			--known {config[mills_gold_indels]} \
+			-targetIntervals '{input.targets}' \
+			-o {output} 
+		"""
+
+rule gatk_base_recalibrator:
+# recalculate base quality scores
+	input:
+		'bam/{sample}.realigned.CleanSam.sorted.markDup.gatk_realigner.bam'
+	output:
+		'GATK_metrics/{sample}.recal_data.table1'
+	threads: 2
+	shell:
+		"""
+		module load GATK/3.5-0
+		GATK -m 8g BaseRecalibrator -p {threads} \
+			-R {config[ref_genome]} \
+			-I {input} \
+			--known {config[1000g_indels]} \
+			--known {config[mills_gold_indels]} \
+			--known {config[dbsnp_var]} \
+			-o {output}
+		"""
+
+rule gatk_print_reads:
+# print out new band with recalibrated scoring
+	input:
+		bam = 'bam/{sample}.realigned.CleanSam.sorted.markDup.gatk_realigner.bam',
+		bqsr = 'GATK_metrics/{sample}.recal_data.table1'
+	output:
+		temp('bam/{sample}.realigned.CleanSam.sorted.markDup.gatk_realigner.recalibrated.bam')
+	threads: 2
+	shell:
+		"""
+		module load GATK/3.5-0
+		GATK -m 8g PrintReads -p {threads} \
+			-R {config[ref_genome]} \
+			-I {input.bam} \
+			-BQSR '{input.bqsr}' \
+			-o {output}
+		"""
+
+rule gatk_base_recalibrator2:
+# recalibrate again
+	input:
+	    bam = 'bam/{sample}.realigned.CleanSam.sorted.markDup.gatk_realigner.bam',
+		bqsr = 'GATK_metrics/{sample}.recal_data.table1'
+	output:
+		'GATK_metrics/{sample}.recal_data.table2'
+	threads: 2
+	shell:
+		"""
+		module load GATK/3.5-0
+		GATK -m 8g BaseRecalibrator -p {threads} \
+			-R {config[ref_genome]} \
+			-I {input.bam} \
+			--known {config[1000g_indels]} \
+			--known {config[mills_gold_indels]} \
+			--known {config[dbsnp_var]} \
+			-BQSR '{input.bqsr}' \
+			-o {output}
+			"""
+
+rule gatk_analyze_covariates:
+	input:
+		one = 'GATK_metrics/{sample}.recal_data.table1',
+		two = 'GATK_metrics/{sample}.recal_data.table2'
+	output:
+		'GATK_metrics/{sample}.BQSRplots.pdf'
+	threads: 2
+	shell:
+		"""
+		GATK -m 8g AnalyzeCovariates -p {threads} \
+			-R {config[ref_genome]} \
+			-before {input.one} \
+			-after {input.two} \
+			-plots {output}
+		"""
+
+rule gatk_haplotype_caller:
+# call gvcf
+	input:
+		bam = 'bam/{sample}.realigned.CleanSam.sorted.markDup.gatk_realigner.recalibrated.bam',
+		bqsr = 'GATK_metrics/{sample}.recal_data.table1' 
+	output:
+		'GVCFs/{sample}.g.vcf.gz'
+	threads: 2
+	shell:
+		"""
+		GATK -m 8g HaplotypeCaller -p {threads} \
+			-R {config[ref_genome]} \
+			-I {input.bam} \
+			--emitRefConfidence GVCF \
+			-BQSR {input.bqsr} \
+			-o {output}
+		"""
+
+rule multiqc_gatk:
+# run multiqc on recalibrator metrics
+	input:
+		expand('GATK_metrics/{sample}.recal_data.table1' ,sample=SAMPLES),
+		expand('GATK_metrics/{sample}.recal_data.table2', sample=SAMPLES)
+	output:
+		'GATK_metrics/multiqc_report'
+	shell:
+		"""
+		module load multiqc
+		multiqc -f -o {output} GATK_metrics
+		"""
