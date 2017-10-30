@@ -2,11 +2,11 @@
 	"__default__" :
 	{
 		"partition" : "norm",
-		"time" : "24:00:00",
-		"mem" : "64g",
-		"extra" : "--gres=lscratch:400",
+		"time" : "18:00:00",
+		"mem" : "8g",
 		"output"  : "00log/{rule}_{wildcards}.out",
-		"error" : "00log/{rule}_{wildcards}.err" 
+		"error" : "00log/{rule}_{wildcards}.err",
+		"extra" : "--gres=lscratch:25"
 	},
 	"split_cram_by_rg" : {
 		"extra" : "--gres=lscratch:10"
@@ -21,6 +21,23 @@
 	{
 		"time" : "24:00:00",
 		"mem" : "64g",
-		"extra" : "--gres=lscratch:400"
-	}
+		"extra" : "--gres=lscratch:200"
+	},
+	"picard_clean_sam" : {
+		"mem" : "64g",
+		"extra" : "--gres=lscratch:100"
+	},
+	"picard_fix_mate_information" : {
+        "mem" : "64g",
+        "extra" : "--gres=lscratch:100"
+	},
+	"picard_mark_dups" : {
+        "mem" : "64g",
+        "extra" : "--gres=lscratch:100"
+    },
+	"picard_bam_index" : {
+        "mem" : "64g",
+        "extra" : "--gres=lscratch:200"
+    }
 }
+	
