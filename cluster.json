@@ -6,7 +6,7 @@
 		"mem" : "8g",
 		"output"  : "00log/{rule}_{wildcards}.out",
 		"error" : "00log/{rule}_{wildcards}.err",
-		"extra" : "--gres=lscratch:25"
+		"extra" : ""
 	},
 	"split_cram_by_rg" : {
 		"extra" : "--gres=lscratch:10"
@@ -28,16 +28,13 @@
 		"extra" : "--gres=lscratch:100"
 	},
 	"picard_fix_mate_information" : {
-        "mem" : "64g",
-        "extra" : "--gres=lscratch:100"
+        "mem" : "64g"
 	},
 	"picard_mark_dups" : {
-        "mem" : "64g",
-        "extra" : "--gres=lscratch:100"
+        "mem" : "64g"
     },
 	"picard_bam_index" : {
-        "mem" : "64g",
-        "extra" : "--gres=lscratch:200"
+        "mem" : "64g"
     }
 }
 	
