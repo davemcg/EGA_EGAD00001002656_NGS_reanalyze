@@ -137,7 +137,6 @@ rule picard_fix_mate_information:
 		module load picard/2.9.2
 		java -Xmx60g -XX:+UseG1GC -XX:ParallelGCThreads={threads} -jar $PICARD_JAR \
 		FixMateInformation \
-			TMP_DIR=/lscratch/$SLURM_JOB_ID \
 			SORT_ORDER=coordinate \
 			INPUT={input} \
 			OUTPUT={output}
@@ -173,7 +172,6 @@ rule picard_bam_index:
 		module load picard/2.9.2
 		java -Xmx60g -XX:+UseG1GC -XX:ParallelGCThreads={threads} -jar $PICARD_JAR \
 		BuildBamIndex \
-			TMP_DIR=/lscratch/$SLURM_JOB_ID \
 			INPUT={input} \
 			OUTPUT={output}
 		"""
@@ -181,16 +179,17 @@ rule picard_bam_index:
 rule gatk_realigner_target:
 # identify regions which need realignment
 	input:
-		'bam/{sample}.realigned.CleanSam.sorted.markDup.bam'
+		bam = 'bam/{sample}.realigned.CleanSam.sorted.markDup.bam',
+		bai = 'bam/{sample}.realigned.CleanSam.sorted.markDup.bam.bai'
 	output:
 		temp('bam/{sample}.forIndexRealigner.intervals')
 	threads: 2
 	shell:
 		"""
 		module load GATK/3.5-0
-		GATK -m 8g RealignerTargetCreator -p {threads} \
+		GATK -p {threads} -m 8g RealignerTargetCreator  \
 			-R {config[ref_genome]}  \
-			-I {input} \
+			-I {input.bam} \
 			--known {config[1000g_indels]} \
 			--known {config[mills_gold_indels]} \
 			-o {output}
@@ -200,6 +199,7 @@ rule gatk_indel_realigner:
 # realigns indels to improve quality
 	input:
 		bam = 'bam/{sample}.realigned.CleanSam.sorted.markDup.bam',
+		bai = 'bam/{sample}.realigned.CleanSam.sorted.markDup.bam.bai',
 		targets = 'bam/{sample}.forIndexRealigner.intervals'
 	output:
 		temp('bam/{sample}.realigned.CleanSam.sorted.markDup.gatk_realigner.bam')
@@ -207,7 +207,7 @@ rule gatk_indel_realigner:
 	shell:
 		"""
 		module load GATK/3.5-0
-		GATK -m 8g IndelRealigner -p {threads} \
+		GATK -p {threads} -m 8g IndelRealigner \
 			-R {config[ref_genome]} \
 			-I {input.bam} \
 			--known {config[1000g_indels]} \
@@ -226,7 +226,7 @@ rule gatk_base_recalibrator:
 	shell:
 		"""
 		module load GATK/3.5-0
-		GATK -m 8g BaseRecalibrator -p {threads} \
+		GATK -p {threads} -m 8g BaseRecalibrator  \
 			-R {config[ref_genome]} \
 			-I {input} \
 			--known {config[1000g_indels]} \
@@ -246,7 +246,7 @@ rule gatk_print_reads:
 	shell:
 		"""
 		module load GATK/3.5-0
-		GATK -m 8g PrintReads -p {threads} \
+		GATK -p {threads} -m 8g PrintReads \
 			-R {config[ref_genome]} \
 			-I {input.bam} \
 			-BQSR '{input.bqsr}' \
@@ -264,7 +264,7 @@ rule gatk_base_recalibrator2:
 	shell:
 		"""
 		module load GATK/3.5-0
-		GATK -m 8g BaseRecalibrator -p {threads} \
+		GATK -p {threads} -m 8g BaseRecalibrator  \
 			-R {config[ref_genome]} \
 			-I {input.bam} \
 			--known {config[1000g_indels]} \
@@ -283,7 +283,7 @@ rule gatk_analyze_covariates:
 	threads: 2
 	shell:
 		"""
-		GATK -m 8g AnalyzeCovariates -p {threads} \
+		GATK -p {threads} -m 8g AnalyzeCovariates \
 			-R {config[ref_genome]} \
 			-before {input.one} \
 			-after {input.two} \
@@ -300,7 +300,7 @@ rule gatk_haplotype_caller:
 	threads: 2
 	shell:
 		"""
-		GATK -m 8g HaplotypeCaller -p {threads} \
+		GATK -p {threads} -m 8g HaplotypeCaller  \
 			-R {config[ref_genome]} \
 			-I {input.bam} \
 			--emitRefConfidence GVCF \
