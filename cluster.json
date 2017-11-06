@@ -28,13 +28,28 @@
 		"extra" : "--gres=lscratch:100"
 	},
 	"picard_fix_mate_information" : {
-        "mem" : "64g"
+		"mem" : "64g"
 	},
 	"picard_mark_dups" : {
-        "mem" : "64g"
-    },
+		"mem" : "64g"
+	},
 	"picard_bam_index" : {
-        "mem" : "64g"
-    }
+		"mem" : "64g"
+	},
+	"gatk_base_recalibrator" : {
+		"mem" : "16g",
+		"time" : "60:00:00"
+	},
+	"gatk_base_recalibrator2" : {
+		"mem" : "16g",
+		"time" : "60:00:00"
+	},
+	"gatk_print_reads" : {
+		"mem" : "16g",
+		"time" : "36:00:00"
+	},
+	"gatk_haplotype_caller" : {
+		"time" : "128:00:00"
+	}
 }
 	
