@@ -21,4 +21,5 @@ sbcmd="sbatch --cpus-per-task={threads} \
 snakemake -s ~/git/EGA_EGAD00001002656_NGS_reanalyze/Snakefile \
 -pr --local-cores 2 --jobs 999 \
 --cluster-config ~/git/EGA_EGAD00001002656_NGS_reanalyze/cluster.json \
---cluster "$sbcmd"  --latency-wait 120 --rerun-incomplete 
+--cluster "$sbcmd"  --latency-wait 120 --rerun-incomplete \
+-k --restart-times 2
