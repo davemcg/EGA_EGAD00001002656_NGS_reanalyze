@@ -92,7 +92,7 @@ rule merge_RG_bams_back_together:
         lane_bam_names
     output:
         temp('bam/{sample}.realigned.bam')
-    threads: 4
+    threads: 2
     shell:
         """
         module load picard/2.9.2
@@ -113,7 +113,7 @@ rule picard_clean_sam:
 		'bam/{sample}.realigned.bam'
 	output:
 		temp('bam/{sample}.realigned.CleanSam.bam')
-	threads: 4
+	threads: 2
 	shell:
 		"""
 		module load picard/2.9.2
@@ -131,7 +131,7 @@ rule picard_fix_mate_information:
 		'bam/{sample}.realigned.CleanSam.bam'
 	output:
 		temp('bam/{sample}.realigned.CleanSam.sorted.bam')
-	threads: 4
+	threads: 2
 	shell:
 		"""
 		module load picard/2.9.2
@@ -149,7 +149,7 @@ rule picard_mark_dups:
 	output:
 		bam = temp('bam/{sample}.realigned.CleanSam.sorted.markDup.bam'),
 		metrics = 'GATK_metrics/{sample}.markDup.metrics'
-	threads: 4
+	threads: 2
 	shell:
 		"""
 		module load picard/2.9.2
@@ -166,7 +166,7 @@ rule picard_bam_index:
 		'bam/{sample}.realigned.CleanSam.sorted.markDup.bam'
 	output:
 		temp('bam/{sample}.realigned.CleanSam.sorted.markDup.bam.bai')
-	threads: 4
+	threads: 2
 	shell:
 		"""
 		module load picard/2.9.2
@@ -210,9 +210,9 @@ rule gatk_indel_realigner:
 		GATK -p {threads} -m 8g IndelRealigner \
 			-R {config[ref_genome]} \
 			-I {input.bam} \
-			--known {config[1000g_indels]} \
-			--known {config[mills_gold_indels]} \
-			-targetIntervals '{input.targets}' \
+			--knownAlleles {config[1000g_indels]} \
+			--knownAlleles {config[mills_gold_indels]} \
+			-targetIntervals {input.targets} \
 			-o {output} 
 		"""
 
@@ -226,12 +226,12 @@ rule gatk_base_recalibrator:
 	shell:
 		"""
 		module load GATK/3.5-0
-		GATK -p {threads} -m 8g BaseRecalibrator  \
+		GATK -p {threads} -m 15g BaseRecalibrator  \
 			-R {config[ref_genome]} \
 			-I {input} \
-			--known {config[1000g_indels]} \
-			--known {config[mills_gold_indels]} \
-			--known {config[dbsnp_var]} \
+			--knownSites {config[1000g_indels]} \
+			--knownSites {config[mills_gold_indels]} \
+			--knownSites {config[dbsnp_var]} \
 			-o {output}
 		"""
 
@@ -246,10 +246,10 @@ rule gatk_print_reads:
 	shell:
 		"""
 		module load GATK/3.5-0
-		GATK -p {threads} -m 8g PrintReads \
+		GATK -p {threads} -m 15g PrintReads \
 			-R {config[ref_genome]} \
 			-I {input.bam} \
-			-BQSR '{input.bqsr}' \
+			-BQSR {input.bqsr} \
 			-o {output}
 		"""
 
@@ -264,13 +264,13 @@ rule gatk_base_recalibrator2:
 	shell:
 		"""
 		module load GATK/3.5-0
-		GATK -p {threads} -m 8g BaseRecalibrator  \
+		GATK -p {threads} -m 15g BaseRecalibrator  \
 			-R {config[ref_genome]} \
 			-I {input.bam} \
-			--known {config[1000g_indels]} \
-			--known {config[mills_gold_indels]} \
-			--known {config[dbsnp_var]} \
-			-BQSR '{input.bqsr}' \
+			--knownSites {config[1000g_indels]} \
+			--knownSites {config[mills_gold_indels]} \
+			--knownSites {config[dbsnp_var]} \
+			-BQSR {input.bqsr} \
 			-o {output}
 			"""
 
@@ -283,6 +283,7 @@ rule gatk_analyze_covariates:
 	threads: 2
 	shell:
 		"""
+		module load GATK/3.5-0
 		GATK -p {threads} -m 8g AnalyzeCovariates \
 			-R {config[ref_genome]} \
 			-before {input.one} \
@@ -300,6 +301,7 @@ rule gatk_haplotype_caller:
 	threads: 2
 	shell:
 		"""
+		module load GATK/3.5-0
 		GATK -p {threads} -m 8g HaplotypeCaller  \
 			-R {config[ref_genome]} \
 			-I {input.bam} \
