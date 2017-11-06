@@ -48,7 +48,8 @@ rule all:
 	input:
 		expand('GVCFs/{sample}.g.vcf.gz', sample=SAMPLES),
 		expand('GATK_metrics/{sample}.BQSRplots.pdf', sample=SAMPLES),
-		'GATK_metrics/multiqc_report'
+		'GATK_metrics/multiqc_report',
+		expand('DELETE.{sample}.DELETE', sample=SAMPLES)
 
 rule split_cram_by_rg:
 	input:
@@ -106,6 +107,18 @@ rule merge_RG_bams_back_together:
                 $picard_i \
                 O={output}
         """
+
+rule rm_original_cram:
+# delete input cram on completion cram splitting into bam by read group
+    input:
+        'bam/{sample}.realigned.bam'
+    output:
+        'DELETE.{sample}.DELETE'
+    shell:
+        """
+        rm cram/{wildcards.sample}.bam.cram
+        """
+
 
 rule picard_clean_sam:
 # "Soft-clipping beyond-end-of-reference alignments and setting MAPQ to 0 for unmapped reads"
