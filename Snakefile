@@ -2,12 +2,11 @@ from os.path import join
 
 configfile: "/home/mcgaugheyd/git/EGA_EGAD00001002656_NGS_reanalyze/config.yaml"
 
-
-
 def return_ID(wildcards):
     # returns the ID in the read group from the header
     import subprocess
-    cram_file = 'cram/' + wildcards + '.bam.cram'
+    import glob
+    cram_file = glob.glob('faux_cram/' + wildcards + '.*')[0]
     command = 'samtools view -H ' + cram_file + ' | grep ^@RG'
     RG_info = subprocess.check_output(command, shell = True)
     RG_info = RG_info.decode().split('\n')[:-1]
@@ -42,16 +41,46 @@ def build_RG(wildcards):
     new_RG = '\\@RG\\\\t' + str(rg_id) + '\\\\t' + str(pu) + '\\\\t' + str(sm) + '\\\\t' + str(pl)
     return(new_RG)
 
-SAMPLES, = glob_wildcards(join('cram/', '{sample}.bam.cram'))
+(SAMPLES, FILE_ENDINGS) = glob_wildcards(join('faux_cram/', '{sample}.ba{file_ending}'))
+#SAMPLES, = glob_wildcards(join('faux_cram/', '{sample}.bam.cram'))
+#SAMPLES = open('/home/mcgaugheyd/git/EGA_EGAD00001002656_NGS_reanalyze/all_cram_names.txt').read().splitlines()
 
 rule all:
 	input:
 		expand('GVCFs/{sample}.g.vcf.gz', sample=SAMPLES),
 		expand('GATK_metrics/{sample}.BQSRplots.pdf', sample=SAMPLES),
-		'GATK_metrics/multiqc_report',
-		expand('DELETE.{sample}.DELETE', sample=SAMPLES)
+		'GATK_metrics/multiqc_report'
+		#expand('DELETE.{sample}.DELETE', sample=SAMPLES)
 
-rule split_cram_by_rg:
+rule globus_cram_transfer_from_Arges:
+	input:
+		'faux_cram/{sample}.bam.cram'
+	output:
+		temp('cram/{sample}.bam.cram')
+	shell:
+		"""
+		globus_out=$(globus transfer --sync-level size \
+			d0960b02-c5f7-11e5-9a36-22000b96db58:/Volumes/Arges/EGA_RD_WGS/{wildcards.sample}.bam.cram \
+			e2620047-6d04-11e5-ba46-22000b92c6ec:/data/mcgaugheyd/{output})
+		id=$(echo $globus_out | rev | cut -f1 -d ' ' | rev)
+		globus task wait $id
+		"""
+
+rule globus_bam_transfer_from_Arges:
+    input:
+        'faux_cram/{sample}.bam'
+    output:
+        temp('cram/{sample}.bam')
+    shell:
+        """
+        globus_out=$(globus transfer --sync-level size \
+            d0960b02-c5f7-11e5-9a36-22000b96db58:{config[orig_data_path]}/{wildcards.sample}.bam \
+            e2620047-6d04-11e5-ba46-22000b92c6ec:{config[project_path]}/{output})
+        id=$(echo $globus_out | rev | cut -f1 -d ' ' | rev)
+        globus task wait $id
+        """
+		
+rule split_original_cram_by_rg:
 	input:
 		'cram/{sample}.bam.cram'
 	output:
@@ -60,12 +89,25 @@ rule split_cram_by_rg:
 		"""
 		# ref cache goes to ~/ by default. TERRIBLE
 		export REF_CACHE=/lscratch/$SLURM_JOB_ID/hts-refcache
-	
+		module load {config[samtools_version]}
 		samtools view -b -r {wildcards.rg_id} {input} > {output}
 		"""
-	message:
-		'echo {read_group_IDs}'
-		'echo {output}'
+
+rule split_original_bam_by_rg:
+    input:
+        'cram/{sample}.bam'
+    output:
+        temp('temp/lane_bam/{sample}.ID{rg_id}.bam')
+    shell:
+        """
+        # ref cache goes to ~/ by default. TERRIBLE
+        export REF_CACHE=/lscratch/$SLURM_JOB_ID/hts-refcache
+		module load {config[samtools_version]}
+        samtools view -b -r {wildcards.rg_id} {input} > {output}
+        """
+#	message:
+#		'echo {read_group_IDs}'
+#		'echo {output}'
 
 rule align:
     input:
@@ -74,13 +116,15 @@ rule align:
         temp('temp/realigned/{sample}.ID{rg_id}.realigned.bam')
     threads: 8 
     params:
-        ref = "/data/mcgaugheyd/genomes/1000G_phase2_GRCh37/human_g1k_v37_decoy.fasta"
+        samtools = '{config[samtools_version]}',
+        bwa = '{config[bwa_version]}',
+        ref = '{config[ref_genome]}'
     run:
         import subprocess
         rg = build_RG(str(input))
-        call = 'module load samtools/1.4; \
-                module load bwa/0.7.12; \
-                samtools collate -uOn 128 ' + str(input) + ' /lscratch/$SLURM_JOB_ID/TMP_' + str(wildcards.sample) + '_ID' + str(wildcards.rg_id) + ' | \
+        call = 'module load ' + str(params.samtools) ; \
+               'module load ' + str(params.bwa) ; \
+               'samtools collate -uOn 128 ' + str(input) + ' /lscratch/$SLURM_JOB_ID/TMP_' + str(wildcards.sample) + '_ID' + str(wildcards.rg_id) + ' | \
                 samtools fastq - | \
                 bwa mem -M -t ' + str(threads) + ' -B 4 -O 6 -E 1 -M -p -R ' + str(rg) + \
                     ' ' + str(params.ref) + ' - | \
@@ -96,7 +140,7 @@ rule merge_RG_bams_back_together:
     threads: 2
     shell:
         """
-        module load picard/2.9.2
+        module load {config[picard_version]}
         picard_i=""
         for bam in {input}; do
             picard_i+=" I=$bam"
@@ -108,18 +152,6 @@ rule merge_RG_bams_back_together:
                 O={output}
         """
 
-rule rm_original_cram:
-# delete input cram on completion cram splitting into bam by read group
-    input:
-        'bam/{sample}.realigned.bam'
-    output:
-        'DELETE.{sample}.DELETE'
-    shell:
-        """
-        rm cram/{wildcards.sample}.bam.cram
-        """
-
-
 rule picard_clean_sam:
 # "Soft-clipping beyond-end-of-reference alignments and setting MAPQ to 0 for unmapped reads"
 	input:
@@ -129,7 +161,7 @@ rule picard_clean_sam:
 	threads: 2
 	shell:
 		"""
-		module load picard/2.9.2
+		module load {config[picard_version]}
 		java -Xmx60g -XX:+UseG1GC -XX:ParallelGCThreads={threads} -jar $PICARD_JAR \
 			CleanSam \
 			TMP_DIR=/lscratch/$SLURM_JOB_ID \
@@ -147,7 +179,7 @@ rule picard_fix_mate_information:
 	threads: 2
 	shell:
 		"""
-		module load picard/2.9.2
+		module load {config[picard_version]}
 		java -Xmx60g -XX:+UseG1GC -XX:ParallelGCThreads={threads} -jar $PICARD_JAR \
 		FixMateInformation \
 			SORT_ORDER=coordinate \
@@ -165,7 +197,7 @@ rule picard_mark_dups:
 	threads: 2
 	shell:
 		"""
-		module load picard/2.9.2
+		module load {config[picard_version]}
 		java -Xmx60g -XX:+UseG1GC -XX:ParallelGCThreads={threads} -jar $PICARD_JAR \
 			MarkDuplicates \
 			INPUT={input} \
@@ -182,7 +214,7 @@ rule picard_bam_index:
 	threads: 2
 	shell:
 		"""
-		module load picard/2.9.2
+		module load {config[picard_version]}
 		java -Xmx60g -XX:+UseG1GC -XX:ParallelGCThreads={threads} -jar $PICARD_JAR \
 		BuildBamIndex \
 			INPUT={input} \
@@ -199,7 +231,7 @@ rule gatk_realigner_target:
 	threads: 2
 	shell:
 		"""
-		module load GATK/3.5-0
+		module load {config[gatk_version]}
 		GATK -p {threads} -m 8g RealignerTargetCreator  \
 			-R {config[ref_genome]}  \
 			-I {input.bam} \
@@ -219,7 +251,7 @@ rule gatk_indel_realigner:
 	threads: 2
 	shell:
 		"""
-		module load GATK/3.5-0
+		module load {config[gatk_version]}
 		GATK -p {threads} -m 8g IndelRealigner \
 			-R {config[ref_genome]} \
 			-I {input.bam} \
@@ -238,7 +270,7 @@ rule gatk_base_recalibrator:
 	threads: 2
 	shell:
 		"""
-		module load GATK/3.5-0
+		module load {config[gatk_version]}
 		GATK -p {threads} -m 15g BaseRecalibrator  \
 			-R {config[ref_genome]} \
 			-I {input} \
@@ -258,7 +290,7 @@ rule gatk_print_reads:
 	threads: 2
 	shell:
 		"""
-		module load GATK/3.5-0
+		module load {config[gatk_version]}
 		GATK -p {threads} -m 15g PrintReads \
 			-R {config[ref_genome]} \
 			-I {input.bam} \
@@ -276,7 +308,7 @@ rule gatk_base_recalibrator2:
 	threads: 2
 	shell:
 		"""
-		module load GATK/3.5-0
+		module load {config[gatk_version]}
 		GATK -p {threads} -m 15g BaseRecalibrator  \
 			-R {config[ref_genome]} \
 			-I {input.bam} \
@@ -296,7 +328,7 @@ rule gatk_analyze_covariates:
 	threads: 2
 	shell:
 		"""
-		module load GATK/3.5-0
+		module load {config[gatk_version]}
 		GATK -p {threads} -m 8g AnalyzeCovariates \
 			-R {config[ref_genome]} \
 			-before {input.one} \
@@ -314,7 +346,7 @@ rule gatk_haplotype_caller:
 	threads: 2
 	shell:
 		"""
-		module load GATK/3.5-0
+		module load {config[gatk_version]}
 		GATK -p {threads} -m 8g HaplotypeCaller  \
 			-R {config[ref_genome]} \
 			-I {input.bam} \
@@ -326,7 +358,7 @@ rule gatk_haplotype_caller:
 rule multiqc_gatk:
 # run multiqc on recalibrator metrics
 	input:
-		expand('GATK_metrics/{sample}.recal_data.table1' ,sample=SAMPLES),
+		expand('GATK_metrics/{sample}.recal_data.table1',sample=SAMPLES),
 		expand('GATK_metrics/{sample}.recal_data.table2', sample=SAMPLES)
 	output:
 		'GATK_metrics/multiqc_report'
