@@ -29,7 +29,6 @@ def lane_bam_names(wildcards):
 def build_RG(wildcards):
     # builds a sam header for the lane bam
     import subprocess
- #   lane_file = 'temp/' + wildcards.sample + 'RG' + wildcards.rg_id + '.bam'
     lane_file = wildcards
     command = 'samtools view -H ' + lane_file + ' | grep ^@RG'
     RG_info = subprocess.check_output(command, shell = True)
@@ -42,15 +41,12 @@ def build_RG(wildcards):
     return(new_RG)
 
 (SAMPLES, FILE_ENDINGS) = glob_wildcards(join('faux_cram/', '{sample}.ba{file_ending}'))
-#SAMPLES, = glob_wildcards(join('faux_cram/', '{sample}.bam.cram'))
-#SAMPLES = open('/home/mcgaugheyd/git/EGA_EGAD00001002656_NGS_reanalyze/all_cram_names.txt').read().splitlines()
 
 rule all:
 	input:
 		expand('GVCFs/{sample}.g.vcf.gz', sample=SAMPLES),
 		expand('GATK_metrics/{sample}.BQSRplots.pdf', sample=SAMPLES),
 		'GATK_metrics/multiqc_report'
-		#expand('DELETE.{sample}.DELETE', sample=SAMPLES)
 
 rule globus_cram_transfer_from_Arges:
 	input:
