@@ -4,8 +4,8 @@
 # run in the data folder for this project
 # on biowulf2:
 # /data/mcgaugheyd/projects/nei/mcgaughey/EGA_EGAD00001002656
+# uses config.yaml in git directory
 
-cd /data/mcgaugheyd/projects/nei/mcgaughey/EGA_EGAD00001002656
 
 module load snakemake || exit 1
 
