@@ -21,7 +21,7 @@
 	{
 		"time" : "24:00:00",
 		"mem" : "64g",
-		"extra" : "--gres=lscratch:200"
+		"extra" : "--gres=lscratch:300"
 	},
 	"picard_clean_sam" : {
 		"mem" : "64g",
@@ -46,10 +46,10 @@
 	},
 	"gatk_print_reads" : {
 		"mem" : "16g",
-		"time" : "36:00:00"
+		"time" : "48:00:00"
 	},
 	"gatk_haplotype_caller" : {
-		"time" : "128:00:00"
+		"time" : "36:00:00"
 	}
 }
 	
