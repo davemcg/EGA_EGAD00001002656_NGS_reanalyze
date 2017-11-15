@@ -7,7 +7,7 @@ def return_ID(wildcards):
     import subprocess
     import glob
     cram_file = glob.glob('faux_cram/' + wildcards + '.*')[0]
-    command = 'samtools view -H ' + cram_file + ' | grep ^@RG'
+    command = 'module load samtools; samtools view -H ' + cram_file + ' | grep ^@RG'
     RG_info = subprocess.check_output(command, shell = True)
     RG_info = RG_info.decode().split('\n')[:-1]
     rg_id = []
@@ -48,7 +48,16 @@ def chr_GVCF_to_single_GVCF(wildcards):
 	for chrom in CHRS:
 		sample_by_chr.append('GVCFs/chr_split/' + sample + '__' + str(chrom) + '.g.vcf.gz')
 	return(sample_by_chr)
-  	
+
+def read_bam_find_chr_and_ID_used_ones(wildcards):
+	# reads bam file (one file per sample)
+	# reads chr from header
+	# checks each chr to find the empty ones to skip for the split by chr rule
+	import subprocess
+	bam  = str(wildcards)
+	
+	
+ 	
 (SAMPLES, FILE_ENDINGS) = glob_wildcards(join('faux_cram/', '{sample}.ba{file_ending}'))
 CHRS=["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","X","Y","MT","GL000207.1","GL000226.1","GL000229.1","GL000231.1","GL000210.1","GL000239.1","GL000235.1","GL000201.1","GL000247.1","GL000245.1","GL000197.1","GL000203.1","GL000246.1","GL000249.1","GL000196.1","GL000248.1","GL000244.1","GL000238.1","GL000202.1","GL000234.1","GL000232.1","GL000206.1","GL000240.1","GL000236.1","GL000241.1","GL000243.1","GL000242.1","GL000230.1","GL000237.1","GL000233.1","GL000204.1","GL000198.1","GL000208.1","GL000191.1","GL000227.1","GL000228.1","GL000214.1","GL000221.1","GL000209.1","GL000218.1","GL000220.1","GL000213.1","GL000211.1","GL000199.1","GL000217.1","GL000216.1","GL000215.1","GL000205.1","GL000219.1","GL000224.1","GL000223.1","GL000195.1","GL000212.1","GL000222.1","GL000200.1","GL000193.1","GL000194.1","GL000225.1","GL000192.1","NC_007605","hs37d5"]
 #CHRS=["1","2","3"]
@@ -60,7 +69,7 @@ wildcard_constraints:
 rule all:
 	input:
 		expand('GVCFs/{sample}.g.vcf.gz', sample=SAMPLES),
-		expand('GATK_metrics/{sample}__{chr}.BQSRplots.pdf', sample=SAMPLES, chr=CHRS),
+	#	expand('GATK_metrics/{sample}__{chr}.BQSRplots.pdf', sample=SAMPLES, chr=CHRS),
 		'GATK_metrics/multiqc_report'
 
 rule globus_cram_transfer_from_Arges:
@@ -68,9 +77,9 @@ rule globus_cram_transfer_from_Arges:
 		'faux_cram/{sample}.bam.cram'
 	output:
 		temp('cram/{sample}.bam.cram')
-	threads: 1
 	resources:
-		parallel=1	
+		parallel=1
+	priority: 5
 	shell:
 		"""
 		globus_out=$(globus transfer --sync-level size \
@@ -87,6 +96,7 @@ rule globus_bam_transfer_from_Arges:
         temp('cram/{sample}.bam')
     resources:
         parallel=1
+    priority: 5 
     shell:
         """
         globus_out=$(globus transfer --sync-level size \
@@ -327,7 +337,7 @@ rule gatk_print_reads:
 		bam = 'bam/chr_split/{sample}__{chr}.realigned.CleanSam.sorted.markDup.gatk_realigner.bam',
 		bqsr = 'GATK_metrics/{sample}__{chr}.recal_data.table1'
 	output:
-		'bam/chr_split/{sample}__{chr}.realigned.CleanSam.sorted.markDup.gatk_realigner.recalibrated.bam'
+		temp('bam/chr_split/{sample}__{chr}.realigned.CleanSam.sorted.markDup.gatk_realigner.recalibrated.bam')
 	threads: 2
 	shell:
 		"""
@@ -407,6 +417,7 @@ rule gatk_concatenate_gvcfs:
 	output:
 		'GVCFs/{sample}.g.vcf.gz'
 	threads: 2
+	priority: 10
 	shell:
 		"""
 		module load {config[gatk_version]}
