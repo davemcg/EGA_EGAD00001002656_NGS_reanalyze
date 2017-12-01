@@ -18,9 +18,9 @@ sbcmd="sbatch --cpus-per-task={threads} \
 {cluster.extra}"
 
 
-snakemake -s /home/mcgaugheyd/git/EGA_EGAD00001002656_NGS_reanalyze/Snakefile \
+snakemake -s /data/mcgaugheyd/projects/nei/mcgaughey/EGA_EGAD00001002656_7n/xab/Snakefile \
 -pr --local-cores 2 --jobs 1999 \
---cluster-config /home/mcgaugheyd/git/EGA_EGAD00001002656_NGS_reanalyze/cluster.json \
+--cluster-config /data/mcgaugheyd/projects/nei/mcgaughey/EGA_EGAD00001002656_7n/xab/cluster.json \
 --cluster "$sbcmd"  --latency-wait 120 --rerun-incomplete \
 -k --restart-times 4 \
---resources parallel=8
+--resources parallel=2
