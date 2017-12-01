@@ -1,6 +1,6 @@
 from os.path import join
 
-configfile: "/home/mcgaugheyd/git/EGA_EGAD00001002656_NGS_reanalyze/config.yaml"
+configfile: "/data/mcgaugheyd/projects/nei/mcgaughey/EGA_EGAD00001002656_7n/xab/config.yaml"
 
 def return_ID(wildcards):
     # returns the ID in the read group from the header
@@ -23,7 +23,7 @@ def lane_bam_names(wildcards):
     rg_ids = return_ID(str(wildcards))
     lane_bam_files = []
     for rg_id in rg_ids:
-        lane_bam_files.append('temp/realigned/{}.ID{}.realigned.bam'.format(wildcards, rg_id))
+        lane_bam_files.append('bam/realigned/{}.ID{}.realigned.bam'.format(wildcards, rg_id))
     return(lane_bam_files)
 
 def build_RG(wildcards):
@@ -46,20 +46,20 @@ def chr_GVCF_to_single_GVCF(wildcards):
 	sample = str(wildcards)
 	sample_by_chr = []
 	for chrom in CHRS:
-		sample_by_chr.append('GVCFs/chr_split/' + sample + '__' + str(chrom) + '.g.vcf.gz')
+		sample_by_chr.append('GVCFs/chr_split/' + sample + '/' + sample + '__' + str(chrom) + '.g.vcf.gz')
 	return(sample_by_chr)
 
-def read_bam_find_chr_and_ID_used_ones(wildcards):
+#def read_bam_find_chr_and_ID_used_ones(wildcards):
 	# reads bam file (one file per sample)
 	# reads chr from header
 	# checks each chr to find the empty ones to skip for the split by chr rule
-	import subprocess
-	bam  = str(wildcards)
+#	import subprocess
+#	bam  = str(wildcards)
 	
 	
  	
 (SAMPLES, FILE_ENDINGS) = glob_wildcards(join('faux_cram/', '{sample}.ba{file_ending}'))
-CHRS=["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","X","Y","MT","GL000207.1","GL000226.1","GL000229.1","GL000231.1","GL000210.1","GL000239.1","GL000235.1","GL000201.1","GL000247.1","GL000245.1","GL000197.1","GL000203.1","GL000246.1","GL000249.1","GL000196.1","GL000248.1","GL000244.1","GL000238.1","GL000202.1","GL000234.1","GL000232.1","GL000206.1","GL000240.1","GL000236.1","GL000241.1","GL000243.1","GL000242.1","GL000230.1","GL000237.1","GL000233.1","GL000204.1","GL000198.1","GL000208.1","GL000191.1","GL000227.1","GL000228.1","GL000214.1","GL000221.1","GL000209.1","GL000218.1","GL000220.1","GL000213.1","GL000211.1","GL000199.1","GL000217.1","GL000216.1","GL000215.1","GL000205.1","GL000219.1","GL000224.1","GL000223.1","GL000195.1","GL000212.1","GL000222.1","GL000200.1","GL000193.1","GL000194.1","GL000225.1","GL000192.1","NC_007605","hs37d5"]
+CHRS=["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","X","Y","MT","GL000207.1","GL000226.1","GL000229.1","GL000231.1","GL000210.1","GL000239.1","GL000235.1","GL000201.1","GL000247.1","GL000245.1","GL000197.1","GL000203.1","GL000246.1","GL000249.1","GL000196.1","GL000248.1","GL000244.1","GL000238.1","GL000202.1","GL000234.1","GL000232.1","GL000206.1","GL000240.1","GL000236.1","GL000241.1","GL000243.1","GL000242.1","GL000230.1","GL000237.1","GL000233.1","GL000204.1","GL000198.1","GL000208.1","GL000191.1","GL000227.1","GL000228.1","GL000214.1","GL000221.1","GL000209.1","GL000218.1","GL000220.1","GL000213.1","GL000211.1","GL000199.1","GL000217.1","GL000216.1","GL000215.1","GL000205.1","GL000219.1","GL000224.1","GL000223.1","GL000195.1","GL000212.1","GL000222.1","GL000200.1","GL000193.1","GL000194.1","GL000225.1","GL000192.1","NC_007605"]
 #CHRS=["1","2","3"]
 
 
@@ -70,16 +70,16 @@ rule all:
 	input:
 		expand('GVCFs/{sample}.g.vcf.gz', sample=SAMPLES),
 	#	expand('GATK_metrics/{sample}__{chr}.BQSRplots.pdf', sample=SAMPLES, chr=CHRS),
-		'GATK_metrics/multiqc_report'
+		'GATK_metrics/multiqc_report',
+		'fastqc/multiqc_report'
 
 rule globus_cram_transfer_from_Arges:
 	input:
 		'faux_cram/{sample}.bam.cram'
 	output:
-		temp('cram/{sample}.bam.cram')
+		('cram/{sample}.bam.cram')
 	resources:
 		parallel=1
-	priority: 5
 	shell:
 		"""
 		globus_out=$(globus transfer --sync-level size \
@@ -93,10 +93,9 @@ rule globus_bam_transfer_from_Arges:
     input:
         'faux_cram/{sample}.bam'
     output:
-        temp('cram/{sample}.bam')
+        ('cram/{sample}.bam')
     resources:
         parallel=1
-    priority: 5 
     shell:
         """
         globus_out=$(globus transfer --sync-level size \
@@ -110,7 +109,7 @@ rule split_original_cram_by_rg:
 	input:
 		'cram/{sample}.bam.cram'
 	output:
-		temp('temp/lane_bam/{sample}.ID{rg_id}.bam')
+		temp('bam/lane_bam/{sample}/{sample}.ID{rg_id}.bam')
 	shell:
 		"""
 		# ref cache goes to ~/ by default. TERRIBLE
@@ -123,7 +122,7 @@ rule split_original_bam_by_rg:
     input:
         'cram/{sample}.bam'
     output:
-        temp('temp/lane_bam/{sample}.ID{rg_id}.bam')
+        temp('bam/lane_bam/{sample}/{sample}.ID{rg_id}.bam')
     shell:
         """
         # ref cache goes to ~/ by default. TERRIBLE
@@ -131,15 +130,12 @@ rule split_original_bam_by_rg:
         module load {config[samtools_version]}
         samtools view -b -r {wildcards.rg_id} {input} > {output}
         """
-#	message:
-#		'echo {read_group_IDs}'
-#		'echo {output}'
 
 rule align:
     input:
-        'temp/lane_bam/{sample}.ID{rg_id}.bam'
+        'bam/lane_bam/{sample}/{sample}.ID{rg_id}.bam'
     output:
-        temp('temp/realigned/{sample}.ID{rg_id}.realigned.bam')
+        temp('bam/realigned/{sample}.ID{rg_id}.realigned.bam')
     threads: 8 
     run:
         import subprocess
@@ -188,12 +184,26 @@ rule build_index:
 		samtools index {input} {output}
 		"""
 
+rule fastqc:
+	input:
+		'bam/{sample}.realigned.bam'
+	output:
+		'fastqc/{sample}'
+	threads: 8
+	shell:
+		"""
+		module load fastqc
+		mkdir -p fastqc 
+		mkdir fastqc/{wildcards.sample}
+		fastqc -t {threads} -o {output} {input}
+		"""
+
 rule split_bam_by_chr:
 	input:
 		'bam/{sample}.realigned.bam',
 		'bam/{sample}.realigned.bam.bai'
 	output:
-		temp('bam/chr_split/{sample}__{chr}.realigned.bam')
+		temp('bam/chr_split/{sample}/{sample}__{chr}.realigned.bam')
 	threads: 2
 	shell:
 		"""
@@ -203,9 +213,9 @@ rule split_bam_by_chr:
 rule picard_clean_sam:
 # "Soft-clipping beyond-end-of-reference alignments and setting MAPQ to 0 for unmapped reads"
 	input:
-		'bam/chr_split/{sample}__{chr}.realigned.bam'
+		'bam/chr_split/{sample}/{sample}__{chr}.realigned.bam'
 	output:
-		temp('bam/chr_split/{sample}__{chr}.realigned.CleanSam.bam')
+		temp('bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.bam')
 	threads: 2
 	shell:
 		"""
@@ -221,9 +231,9 @@ rule picard_fix_mate_information:
 # "Verify mate-pair information between mates and fix if needed."
 # also coord sorts
 	input:
-		'bam/chr_split/{sample}__{chr}.realigned.CleanSam.bam'
+		'bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.bam'
 	output:
-		temp('bam/chr_split/{sample}__{chr}.realigned.CleanSam.sorted.bam')
+		temp('bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.bam')
 	threads: 2
 	shell:
 		"""
@@ -238,9 +248,9 @@ rule picard_fix_mate_information:
 rule picard_mark_dups:
 # Mark duplicate reads
 	input:
-		'bam/chr_split/{sample}__{chr}.realigned.CleanSam.sorted.bam'
+		'bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.bam'
 	output:
-		bam = temp('bam/chr_split/{sample}__{chr}.realigned.CleanSam.sorted.markDup.bam'),
+		bam = temp('bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.markDup.bam'),
 		metrics = 'GATK_metrics/{sample}__{chr}.markDup.metrics'
 	threads: 2
 	shell:
@@ -256,9 +266,9 @@ rule picard_mark_dups:
 rule picard_bam_index:
 # Build bam index
 	input:
-		'bam/chr_split/{sample}__{chr}.realigned.CleanSam.sorted.markDup.bam'
+		'bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.markDup.bam'
 	output:
-		temp('bam/chr_split/{sample}__{chr}.realigned.CleanSam.sorted.markDup.bam.bai')
+		temp('bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.markDup.bam.bai')
 	threads: 2
 	shell:
 		"""
@@ -272,10 +282,10 @@ rule picard_bam_index:
 rule gatk_realigner_target:
 # identify regions which need realignment
 	input:
-		bam = 'bam/chr_split/{sample}__{chr}.realigned.CleanSam.sorted.markDup.bam',
-		bai = 'bam/chr_split/{sample}__{chr}.realigned.CleanSam.sorted.markDup.bam.bai'
+		bam = 'bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.markDup.bam',
+		bai = 'bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.markDup.bam.bai'
 	output:
-		temp('bam/chr_split/{sample}__{chr}.forIndexRealigner.intervals')
+		temp('bam/chr_split/{sample}/{sample}__{chr}.forIndexRealigner.intervals')
 	threads: 2
 	shell:
 		"""
@@ -292,11 +302,11 @@ rule gatk_realigner_target:
 rule gatk_indel_realigner:
 # realigns indels to improve quality
 	input:
-		bam = 'bam/chr_split/{sample}__{chr}.realigned.CleanSam.sorted.markDup.bam',
-		bai = 'bam/chr_split/{sample}__{chr}.realigned.CleanSam.sorted.markDup.bam.bai',
-		targets = 'bam/chr_split/{sample}__{chr}.forIndexRealigner.intervals'
+		bam = 'bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.markDup.bam',
+		bai = 'bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.markDup.bam.bai',
+		targets = 'bam/chr_split/{sample}/{sample}__{chr}.forIndexRealigner.intervals'
 	output:
-		temp('bam/chr_split/{sample}__{chr}.realigned.CleanSam.sorted.markDup.gatk_realigner.bam')
+		temp('bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.markDup.gatk_realigner.bam')
 	threads: 2
 	shell:
 		"""
@@ -314,7 +324,7 @@ rule gatk_indel_realigner:
 rule gatk_base_recalibrator:
 # recalculate base quality scores
 	input:
-		'bam/chr_split/{sample}__{chr}.realigned.CleanSam.sorted.markDup.gatk_realigner.bam'
+		'bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.markDup.gatk_realigner.bam'
 	output:
 		'GATK_metrics/{sample}__{chr}.recal_data.table1'
 	threads: 2
@@ -334,10 +344,10 @@ rule gatk_base_recalibrator:
 rule gatk_print_reads:
 # print out new bam with recalibrated scoring
 	input:
-		bam = 'bam/chr_split/{sample}__{chr}.realigned.CleanSam.sorted.markDup.gatk_realigner.bam',
+		bam = 'bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.markDup.gatk_realigner.bam',
 		bqsr = 'GATK_metrics/{sample}__{chr}.recal_data.table1'
 	output:
-		temp('bam/chr_split/{sample}__{chr}.realigned.CleanSam.sorted.markDup.gatk_realigner.recalibrated.bam')
+		temp('bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.markDup.gatk_realigner.recalibrated.bam')
 	threads: 2
 	shell:
 		"""
@@ -353,7 +363,7 @@ rule gatk_print_reads:
 rule gatk_base_recalibrator2:
 # recalibrate again
 	input:
-	    bam = 'bam/chr_split/{sample}__{chr}.realigned.CleanSam.sorted.markDup.gatk_realigner.bam',
+	    bam = 'bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.markDup.gatk_realigner.bam',
 		bqsr = 'GATK_metrics/{sample}__{chr}.recal_data.table1'
 	output:
 		'GATK_metrics/{sample}__{chr}.recal_data.table2'
@@ -393,10 +403,10 @@ rule gatk_analyze_covariates:
 rule gatk_haplotype_caller:
 # call gvcf
 	input:
-		bam = 'bam/chr_split/{sample}__{chr}.realigned.CleanSam.sorted.markDup.gatk_realigner.recalibrated.bam',
+		bam = 'bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.markDup.gatk_realigner.recalibrated.bam',
 		bqsr = 'GATK_metrics/{sample}__{chr}.recal_data.table1' 
 	output:
-		temp('GVCFs/chr_split/{sample}__{chr}.g.vcf.gz')
+		('GVCFs/chr_split/{sample}/{sample}__{chr}.g.vcf.gz')
 	threads: 2
 	shell:
 		"""
@@ -417,7 +427,6 @@ rule gatk_concatenate_gvcfs:
 	output:
 		'GVCFs/{sample}.g.vcf.gz'
 	threads: 2
-	priority: 10
 	shell:
 		"""
 		module load {config[gatk_version]}
@@ -443,4 +452,15 @@ rule multiqc_gatk:
 		"""
 		module load multiqc
 		multiqc -f -o {output} GATK_metrics
+		"""
+
+rule multiqc_fastqc:
+	input:
+		expand('fastqc/{sample}', sample=SAMPLES)
+	output:
+		fastqc = 'fastqc/multiqc_report'
+	shell:
+		"""
+		module load multiqc
+		multiqc -f -o {output} fastqc/
 		"""
