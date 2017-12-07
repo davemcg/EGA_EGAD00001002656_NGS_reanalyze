@@ -1,6 +1,6 @@
 from os.path import join
 
-configfile: "/data/mcgaugheyd/projects/nei/mcgaughey/EGA_EGAD00001002656_7n/xab/config.yaml"
+configfile: "/data/mcgaugheyd/projects/nei/mcgaughey/EGA_EGAD00001002656_7n/xae/config.yaml"
 
 def return_ID(wildcards):
     # returns the ID in the read group from the header
@@ -59,9 +59,10 @@ def chr_GVCF_to_single_GVCF(wildcards):
 	
  	
 (SAMPLES, FILE_ENDINGS) = glob_wildcards(join('faux_cram/', '{sample}.ba{file_ending}'))
-CHRS=["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","X","Y","MT","GL000207.1","GL000226.1","GL000229.1","GL000231.1","GL000210.1","GL000239.1","GL000235.1","GL000201.1","GL000247.1","GL000245.1","GL000197.1","GL000203.1","GL000246.1","GL000249.1","GL000196.1","GL000248.1","GL000244.1","GL000238.1","GL000202.1","GL000234.1","GL000232.1","GL000206.1","GL000240.1","GL000236.1","GL000241.1","GL000243.1","GL000242.1","GL000230.1","GL000237.1","GL000233.1","GL000204.1","GL000198.1","GL000208.1","GL000191.1","GL000227.1","GL000228.1","GL000214.1","GL000221.1","GL000209.1","GL000218.1","GL000220.1","GL000213.1","GL000211.1","GL000199.1","GL000217.1","GL000216.1","GL000215.1","GL000205.1","GL000219.1","GL000224.1","GL000223.1","GL000195.1","GL000212.1","GL000222.1","GL000200.1","GL000193.1","GL000194.1","GL000225.1","GL000192.1","NC_007605"]
+CHRS=["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","X","Y","MT_contigs"]
 #CHRS=["1","2","3"]
 
+MT_CONTIGS="MT GL000207.1 GL000226.1 GL000229.1 GL000231.1 GL000210.1 GL000239.1 GL000235.1 GL000201.1 GL000247.1 GL000245.1 GL000197.1 GL000203.1 GL000246.1 GL000249.1 GL000196.1 GL000248.1 GL000244.1 GL000238.1 GL000202.1 GL000234.1 GL000232.1 GL000206.1 GL000240.1 GL000236.1 GL000241.1 GL000243.1 GL000242.1 GL000230.1 GL000237.1 GL000233.1 GL000204.1 GL000198.1 GL000208.1 GL000191.1 GL000227.1 GL000228.1 GL000214.1 GL000221.1 GL000209.1 GL000218.1 GL000220.1 GL000213.1 GL000211.1 GL000199.1 GL000217.1 GL000216.1 GL000215.1 GL000205.1 GL000219.1 GL000224.1 GL000223.1 GL000195.1 GL000212.1 GL000222.1 GL000200.1 GL000193.1 GL000194.1 GL000225.1 GL000192.1 NC_007605"
 
 wildcard_constraints:
 	sample="_EGAR.*_[A-Z]\d{6}_[A|B]"
@@ -77,7 +78,7 @@ rule globus_cram_transfer_from_Arges:
 	input:
 		'faux_cram/{sample}.bam.cram'
 	output:
-		('cram/{sample}.bam.cram')
+		temp('cram/{sample}.bam.cram')
 	resources:
 		parallel=1
 	shell:
@@ -93,7 +94,7 @@ rule globus_bam_transfer_from_Arges:
     input:
         'faux_cram/{sample}.bam'
     output:
-        ('cram/{sample}.bam')
+        temp('cram/{sample}.bam')
     resources:
         parallel=1
     shell:
@@ -136,14 +137,15 @@ rule align:
         'bam/lane_bam/{sample}/{sample}.ID{rg_id}.bam'
     output:
         temp('bam/realigned/{sample}.ID{rg_id}.realigned.bam')
-    threads: 8 
+    threads: 16 
     run:
         import subprocess
         rg = build_RG(str(input))
         call = 'module load ' + str(config["samtools_version"]) + '; ' \
-               'module load ' + str(config["bwa_version"]) + ';   \
-                export REF_CACHE=/lscratch/$SLURM_JOB_ID/hts-refcache;  \
-                samtools collate -uOn 128 ' + str(input) + ' /lscratch/$SLURM_JOB_ID/TMP_' + str(wildcards.sample) + '_ID' + str(wildcards.rg_id) + ' | \
+               'module load ' + str(config["bwa_version"]) + '; \
+				mkdir -p /scratch/mcgaugheyd/$SLURM_JOB_ID/; \
+                export REF_CACHE=/scratch/mcgaugheyd/$SLURM_JOB_ID/hts-refcache;  \
+                samtools collate -uOn 128 ' + str(input) + ' /scratch/mcgaugheyd/$SLURM_JOB_ID/TMP_' + str(wildcards.sample) + '_ID' + str(wildcards.rg_id) + ' | \
                 samtools fastq - | \
                 bwa mem -M -t ' + str(threads) + ' -B 4 -O 6 -E 1 -M -p -R ' + str(rg) + \
                     ' ' + str(config["bwa_genome"]) + ' - | \
@@ -200,15 +202,19 @@ rule fastqc:
 
 rule split_bam_by_chr:
 	input:
-		'bam/{sample}.realigned.bam',
-		'bam/{sample}.realigned.bam.bai'
+		bam = 'bam/{sample}.realigned.bam',
+		bai = 'bam/{sample}.realigned.bam.bai'
 	output:
 		temp('bam/chr_split/{sample}/{sample}__{chr}.realigned.bam')
 	threads: 2
 	shell:
 		"""
 		module load {config[samtools_version]}
-		samtools view -bh {input} {wildcards.chr} > {output}
+		if [[ {wildcards.chr} != "MT_contigs" ]]; then
+			samtools view -bh {input.bam} {wildcards.chr} > {output}
+		else
+			samtools view -bh {input.bam} {MT_CONTIGS}  > {output}
+		fi
 		"""
 rule picard_clean_sam:
 # "Soft-clipping beyond-end-of-reference alignments and setting MAPQ to 0 for unmapped reads"
@@ -250,7 +256,7 @@ rule picard_mark_dups:
 	input:
 		'bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.bam'
 	output:
-		bam = temp('bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.markDup.bam'),
+		bam = ('bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.markDup.bam'),
 		metrics = 'GATK_metrics/{sample}__{chr}.markDup.metrics'
 	threads: 2
 	shell:
@@ -293,7 +299,6 @@ rule gatk_realigner_target:
 		GATK -p {threads} -m 8g RealignerTargetCreator  \
 			-R {config[ref_genome]}  \
 			-I {input.bam} \
-			-L {wildcards.chr} \
 			--known {config[1000g_indels]} \
 			--known {config[mills_gold_indels]} \
 			-o {output}
@@ -314,7 +319,6 @@ rule gatk_indel_realigner:
 		GATK -p {threads} -m 8g IndelRealigner \
 			-R {config[ref_genome]} \
 			-I {input.bam} \
-			-L {wildcards.chr} \
 			--knownAlleles {config[1000g_indels]} \
 			--knownAlleles {config[mills_gold_indels]} \
 			-targetIntervals {input.targets} \
@@ -334,7 +338,6 @@ rule gatk_base_recalibrator:
 		GATK -p {threads} -m 15g BaseRecalibrator  \
 			-R {config[ref_genome]} \
 			-I {input} \
-			-L {wildcards.chr} \
 			--knownSites {config[1000g_indels]} \
 			--knownSites {config[mills_gold_indels]} \
 			--knownSites {config[dbsnp_var]} \
@@ -355,7 +358,6 @@ rule gatk_print_reads:
 		GATK -p {threads} -m 15g PrintReads \
 			-R {config[ref_genome]} \
 			-I {input.bam} \
-			-L {wildcards.chr} \
 			-BQSR {input.bqsr} \
 			-o {output}
 		"""
@@ -374,7 +376,6 @@ rule gatk_base_recalibrator2:
 		GATK -p {threads} -m 15g BaseRecalibrator  \
 			-R {config[ref_genome]} \
 			-I {input.bam} \
-			-L {wildcards.chr} \
 			--knownSites {config[1000g_indels]} \
 			--knownSites {config[mills_gold_indels]} \
 			--knownSites {config[dbsnp_var]} \
@@ -394,7 +395,6 @@ rule gatk_analyze_covariates:
 		module load {config[gatk_version]}
 		GATK -p {threads} -m 8g AnalyzeCovariates \
 			-R {config[ref_genome]} \
-			-L {wildcards.chr} \
 			-before {input.one} \
 			-after {input.two} \
 			-plots {output}
@@ -406,7 +406,7 @@ rule gatk_haplotype_caller:
 		bam = 'bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.markDup.gatk_realigner.recalibrated.bam',
 		bqsr = 'GATK_metrics/{sample}__{chr}.recal_data.table1' 
 	output:
-		('GVCFs/chr_split/{sample}/{sample}__{chr}.g.vcf.gz')
+		temp('GVCFs/chr_split/{sample}/{sample}__{chr}.g.vcf.gz')
 	threads: 2
 	shell:
 		"""
@@ -414,13 +414,12 @@ rule gatk_haplotype_caller:
 		GATK -p {threads} -m 8g HaplotypeCaller  \
 			-R {config[ref_genome]} \
 			-I {input.bam} \
-			-L {wildcards.chr} \
 			--emitRefConfidence GVCF \
 			-BQSR {input.bqsr} \
 			-o {output}
 		"""
 
-rule gatk_concatenate_gvcfs:
+rule picard_merge_gvcfs:
 # merge chr split gvcf back into one gvcf per sample
 	input:
 		chr_GVCF_to_single_GVCF
@@ -429,16 +428,14 @@ rule gatk_concatenate_gvcfs:
 	threads: 2
 	shell:
 		"""
-		module load {config[gatk_version]}
+		module load {config[picard_version]}
 		cat_inputs_i=""
-		for bam in {input}; do
-			cat_inputs_i+="-V $bam "; done
-		java -Xmx8g -Djava.io.tmpdir=/scratch/$USER \
-			-XX:ParallelGCThreads={threads} \
-			-cp $GATK_JAR org.broadinstitute.gatk.tools.CatVariants \
-			-R {config[ref_genome]} \
+		for gvcf in {input}; do
+			cat_inputs_i+="I=$gvcf "; done
+		java -Xmx15g -XX:+UseG1GC -XX:ParallelGCThreads={threads} -jar $PICARD_JAR \
+			MergeVcfs \
 			$cat_inputs_i \
-			-out {output} \
+			O={output}
 		"""
 
 rule multiqc_gatk:
