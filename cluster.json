@@ -17,8 +17,7 @@
 	{
 		"partition" : "norm",
 		"time" : "48:00:00",
-		"mem" : "32g",
-		"extra" : "--gres=lscratch:100"
+		"mem" : "32g"
 	},
 	"merge_RG_bams_back_together" :
 	{
@@ -68,6 +67,10 @@
 		"time" : "48:00:00"
 	},
 	"split_original_cram_by_rg" : {
+		"partition" : "norm",
+		"time" : "12:00:00"
+	},
+	"fastqc" : {
 		"partition" : "norm",
 		"time" : "12:00:00"
 	}
