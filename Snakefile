@@ -253,7 +253,7 @@ rule picard_mark_dups:
 	input:
 		'bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.bam'
 	output:
-		bam = ('bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.markDup.bam'),
+		bam = temp('bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.markDup.bam'),
 		metrics = 'GATK_metrics/{sample}__{chr}.markDup.metrics'
 	threads: 2
 	shell:
