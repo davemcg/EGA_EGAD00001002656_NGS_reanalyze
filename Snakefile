@@ -1,6 +1,6 @@
 from os.path import join
 
-configfile: "/data/mcgaugheyd/projects/nei/mcgaughey/EGA_EGAD00001002656_7n/xae/config.yaml"
+configfile: "/data/mcgaugheyd/projects/nei/mcgaughey/EGA_EGAD00001002656_7n/xab/config.yaml"
 
 def return_ID(wildcards):
     # returns the ID in the read group from the header
@@ -49,14 +49,14 @@ def chr_GVCF_to_single_GVCF(wildcards):
 		sample_by_chr.append('GVCFs/chr_split/' + sample + '/' + sample + '__' + str(chrom) + '.g.vcf.gz')
 	return(sample_by_chr)
 
-#def read_bam_find_chr_and_ID_used_ones(wildcards):
-	# reads bam file (one file per sample)
-	# reads chr from header
-	# checks each chr to find the empty ones to skip for the split by chr rule
-#	import subprocess
-#	bam  = str(wildcards)
-	
-	
+def return_correct_chr_set(wildcards):
+	# replaces 'MT_contigs' with actual values	
+	MT_CONTIGS="MT GL000207.1 GL000226.1 GL000229.1 GL000231.1 GL000210.1 GL000239.1 GL000235.1 GL000201.1 GL000247.1 GL000245.1 GL000197.1 GL000203.1 GL000246.1 GL000249.1 GL000196.1 GL000248.1 GL000244.1 GL000238.1 GL000202.1 GL000234.1 GL000232.1 GL000206.1 GL000240.1 GL000236.1 GL000241.1 GL000243.1 GL000242.1 GL000230.1 GL000237.1 GL000233.1 GL000204.1 GL000198.1 GL000208.1 GL000191.1 GL000227.1 GL000228.1 GL000214.1 GL000221.1 GL000209.1 GL000218.1 GL000220.1 GL000213.1 GL000211.1 GL000199.1 GL000217.1 GL000216.1 GL000215.1 GL000205.1 GL000219.1 GL000224.1 GL000223.1 GL000195.1 GL000212.1 GL000222.1 GL000200.1 GL000193.1 GL000194.1 GL000225.1 GL000192.1 NC_007605"
+	chr = str(wildcards.chr)
+	if chr == 'MT_contigs':
+		chr = MT_CONTIGS
+	return(chr)
+
  	
 (SAMPLES, FILE_ENDINGS) = glob_wildcards(join('faux_cram/', '{sample}.ba{file_ending}'))
 CHRS=["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","X","Y","MT_contigs"]
@@ -199,7 +199,6 @@ rule fastqc:
 		mkdir fastqc/{wildcards.sample}
 		fastqc -t {threads} -o {output} {input}
 		"""
-
 rule split_bam_by_chr:
 	input:
 		bam = 'bam/{sample}.realigned.bam',
@@ -207,14 +206,12 @@ rule split_bam_by_chr:
 	output:
 		temp('bam/chr_split/{sample}/{sample}__{chr}.realigned.bam')
 	threads: 2
+	params:
+		chromosome = return_correct_chr_set
 	shell:
 		"""
 		module load {config[samtools_version]}
-		if [[ {wildcards.chr} != "MT_contigs" ]]; then
-			samtools view -bh {input.bam} {wildcards.chr} > {output}
-		else
-			samtools view -bh {input.bam} {MT_CONTIGS}  > {output}
-		fi
+		samtools view -bh {input.bam} {params.chromosome}  > {output}
 		"""
 rule picard_clean_sam:
 # "Soft-clipping beyond-end-of-reference alignments and setting MAPQ to 0 for unmapped reads"
@@ -293,11 +290,15 @@ rule gatk_realigner_target:
 	output:
 		temp('bam/chr_split/{sample}/{sample}__{chr}.forIndexRealigner.intervals')
 	threads: 2
+	params:
+		chromosome = return_correct_chr_set
 	shell:
 		"""
+		chromosome_interval=$(sed 's/^\|\s/ -L /g' <(echo {params.chromosome}))
 		module load {config[gatk_version]}
 		GATK -p {threads} -m 8g RealignerTargetCreator  \
 			-R {config[ref_genome]}  \
+			$chromosome_interval \
 			-I {input.bam} \
 			--known {config[1000g_indels]} \
 			--known {config[mills_gold_indels]} \
@@ -313,11 +314,15 @@ rule gatk_indel_realigner:
 	output:
 		temp('bam/chr_split/{sample}/{sample}__{chr}.realigned.CleanSam.sorted.markDup.gatk_realigner.bam')
 	threads: 2
+	params:
+		chromosome = return_correct_chr_set
 	shell:
 		"""
+		chromosome_interval=$(sed 's/^\|\s/ -L /g' <(echo {params.chromosome}))
 		module load {config[gatk_version]}
 		GATK -p {threads} -m 8g IndelRealigner \
 			-R {config[ref_genome]} \
+			$chromosome_interval \
 			-I {input.bam} \
 			--knownAlleles {config[1000g_indels]} \
 			--knownAlleles {config[mills_gold_indels]} \
@@ -332,11 +337,15 @@ rule gatk_base_recalibrator:
 	output:
 		'GATK_metrics/{sample}__{chr}.recal_data.table1'
 	threads: 2
+	params:
+		chromosome = return_correct_chr_set
 	shell:
 		"""
+		chromosome_interval=$(sed 's/^\|\s/ -L /g' <(echo {params.chromosome}))
 		module load {config[gatk_version]}
 		GATK -p {threads} -m 15g BaseRecalibrator  \
 			-R {config[ref_genome]} \
+			$chromosome_interval \
 			-I {input} \
 			--knownSites {config[1000g_indels]} \
 			--knownSites {config[mills_gold_indels]} \
@@ -370,11 +379,15 @@ rule gatk_base_recalibrator2:
 	output:
 		'GATK_metrics/{sample}__{chr}.recal_data.table2'
 	threads: 2
+	params:
+		chromosome = return_correct_chr_set
 	shell:
 		"""
+		chromosome_interval=$(sed 's/^\|\s/ -L /g' <(echo {params.chromosome}))
 		module load {config[gatk_version]}
 		GATK -p {threads} -m 15g BaseRecalibrator  \
 			-R {config[ref_genome]} \
+			$chromosome_interval \
 			-I {input.bam} \
 			--knownSites {config[1000g_indels]} \
 			--knownSites {config[mills_gold_indels]} \
@@ -390,11 +403,15 @@ rule gatk_analyze_covariates:
 	output:
 		'GATK_metrics/{sample}__{chr}.BQSRplots.pdf'
 	threads: 2
+	params:
+		chromosome = return_correct_chr_set
 	shell:
 		"""
+		chromosome_interval=$(sed 's/^\|\s/ -L /g' <(echo {params.chromosome}))
 		module load {config[gatk_version]}
 		GATK -p {threads} -m 8g AnalyzeCovariates \
 			-R {config[ref_genome]} \
+			$chromosome_interval \
 			-before {input.one} \
 			-after {input.two} \
 			-plots {output}
@@ -408,11 +425,15 @@ rule gatk_haplotype_caller:
 	output:
 		temp('GVCFs/chr_split/{sample}/{sample}__{chr}.g.vcf.gz')
 	threads: 2
+	params:
+		chromosome = return_correct_chr_set
 	shell:
 		"""
+		chromosome_interval=$(sed 's/^\|\s/ -L /g' <(echo {params.chromosome}))
 		module load {config[gatk_version]}
 		GATK -p {threads} -m 8g HaplotypeCaller  \
 			-R {config[ref_genome]} \
+			$chromosome_interval \
 			-I {input.bam} \
 			--emitRefConfidence GVCF \
 			-BQSR {input.bqsr} \
