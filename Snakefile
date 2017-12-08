@@ -1,6 +1,6 @@
 from os.path import join
 
-configfile: "/data/mcgaugheyd/projects/nei/mcgaughey/EGA_EGAD00001002656_7n/xab/config.yaml"
+configfile: "/data/mcgaugheyd/projects/nei/mcgaughey/EGA_EGAD00001002656_7n/xac/config.yaml"
 
 def return_ID(wildcards):
     # returns the ID in the read group from the header
@@ -196,7 +196,7 @@ rule fastqc:
 		"""
 		module load fastqc
 		mkdir -p fastqc 
-		mkdir fastqc/{wildcards.sample}
+		mkdir -p fastqc/{wildcards.sample}
 		fastqc -t {threads} -o {output} {input}
 		"""
 rule split_bam_by_chr:
