@@ -1,6 +1,6 @@
 from os.path import join
 
-configfile: "/data/mcgaugheyd/projects/nei/mcgaughey/EGA_EGAD00001002656_7n/xac/config.yaml"
+configfile: "/data/mcgaugheyd/projects/nei/mcgaughey/EGA_EGAD00001002656_7n/xab/config.yaml"
 
 def return_ID(wildcards):
     # returns the ID in the read group from the header
