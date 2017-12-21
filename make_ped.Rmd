@@ -1,0 +1,13 @@
+---
+title: "Metadata Parse and make PED""
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+metadata <- readxl::read_xlsx('1-s2.0-S0002929716305274-mmc3.xlsx')
+
+ped_data <- metadata %>% select(Patient, Phenotype, Sex, Ethnicity, Status) %>% unique() %>% mutate(Dad=0,Mom=0,Fam=Patient,Sex01=case_when(Sex=='M' ~ 1, Sex=='F' ~ 2, TRUE ~ 0), Mut=2) %>% select(Fam, Patient, Dad, Mom, Sex=Sex01, Mut, Status, Phenotype, Ethnicity) 
+
+write.table(ped_data, 'EGAD00001002656.ped', sep='\t', quote=F, row.names=F)
+```
