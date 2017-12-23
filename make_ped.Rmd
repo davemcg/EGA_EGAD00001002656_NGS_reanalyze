@@ -7,11 +7,11 @@ output: html_notebook
 library(tidyverse)
 metadata <- readxl::read_xlsx('1-s2.0-S0002929716305274-mmc3.xlsx')
 
-ped_data <- metadata %>% select(Patient, Phenotype, Sex, Ethnicity, Status) %>% unique() %>% rowwise() %>% mutate(Dad=0,Mom=0,Fam=Patient,Sex01=case_when(Sex=='M' ~ 1, Sex=='F' ~ 2, TRUE ~ 0), Mut=2, P2 = gsub(pattern = ' ', '_', Phenotype)) %>% select(Fam, Patient, Dad, Mom, Sex=Sex01, Mut, Status, P2, Ethnicity)
+ped_data <- metadata %>% select(Patient, Phenotype, Sex, Ethnicity, Status) %>% unique() %>% rowwise() %>% mutate(Dad=0,Mom=0,Fam=Patient,Sex01=case_when(Sex=='M' ~ 1, Sex=='F' ~ 2, TRUE ~ 0), Mut=2, P2 = gsub(pattern = ' ', '_', Phenotype)) %>% select(Fam, Patient, Dad, Mom, Sex=Sex01, Mut, Status, Phenotype=P2, Ethnicity)
 
 ped_data_GATK <- metadata %>% select(Patient, Phenotype, Sex, Ethnicity, Status) %>% unique() %>% rowwise() %>% mutate(Dad=0,Mom=0,Fam=Patient,Sex01=case_when(Sex=='M' ~ 1, Sex=='F' ~ 2, TRUE ~ 0), Mut=2, P2 = gsub(pattern = ' ', '_', Phenotype)) %>% select(Fam, Patient, Dad, Mom, Sex=Sex01, Mut)
 
-write.table(ped_data, 'EGAD00001002656.ped', sep=' ', quote=F, row.names=F, col.names = F)
+write.table(ped_data, 'EGAD00001002656.ped', sep=' ', quote=F, row.names=F, col.names = T)
 
 write.table(ped_data_GATK, 'EGAD00001002656_GATK.ped', sep=' ', quote=F, row.names=F, col.names = F)
 ```
