@@ -74,7 +74,7 @@ rule GenotypeGVCFs:
 		vcf = expand('temp/fix_header/{sample}.g.vcf.gz', sample=SAMPLES),
 		index = expand('temp/fix_header/{sample}.g.vcf.gz.tbi', sample=SAMPLES)
 	output:
-		temp('temp/{output_name}_{chr}.vcf.gz')
+		('temp/{output_name}_{chr}.vcf.gz')
 	params:
 		chromosome = return_correct_chr_set
 	shell:
@@ -97,7 +97,8 @@ rule PhaseByTransmission:
 	input:
 		'temp/{output_name}_{chr}.vcf.gz'
 	output:
-		temp('temp/{output_name}_{chr}.PBT.vcf.gz')
+		vcf = temp('temp/{output_name}_{chr}.PBT.vcf.gz'),
+		index = temp('temp/{output_name}_{chr}.PBT.vcf.gz.tbi')
 	params:
 		chromosome = return_correct_chr_set
 	shell:
@@ -109,11 +110,13 @@ rule PhaseByTransmission:
 			GATK -m 20g PhaseByTransmission \
 				-R {config[ref_genome]} \
 				$chromosome_interval \
-				-o {output} \
+				-o {output.vcf} \
 				-ped {config[pedigree]} \
 				-V {input}
 		else
-			mv {input} {output}
+			mv {input} {output.vcf}
+			module load {config[samtools_version]}
+			tabix -p vcf {output.vcf}
 		fi
 		"""
 
@@ -122,7 +125,8 @@ if str(config['VQSR']).upper() == 'NO':
 	
 	rule SelectVariants:
 		input:
-			'temp/{output_name}_{chr}.PBT.vcf.gz'
+			vcf = 'temp/{output_name}_{chr}.PBT.vcf.gz',
+			index = 'temp/{output_name}_{chr}.PBT.vcf.gz.tbi'
 		output:
 			temp('temp/{output_name}_{chr}.raw{variant_type}.vcf.gz')
 		params:
@@ -136,7 +140,7 @@ if str(config['VQSR']).upper() == 'NO':
 				-o {output} \
 				$chromosome_interval \
 				-selectType {wildcards.variant_type} \
-				-V {input} 
+				-V {input.vcf} 
 			"""
 
 	rule VariantFiltration:
