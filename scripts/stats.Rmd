@@ -1,0 +1,66 @@
+---
+title: "Stats on Hets and Homs"
+output: html_notebook
+---
+
+# Input
+Queried the `EGAD00001002656.GATK.PED_EGAD00001002656.gemini.db` gemini database with two queries
+
+
+```{bash, eval = FALSE}
+#biowulf2
+sinteractive
+module load gemini
+cd /data/mcgaugheyd/projects/nei/mcgaughey/EGA_EGAD00001002656_7n/vcf_annotated
+# just search once (well, twice)
+time gemini query --show-samples --header -q "select * from variants where aaf < 0.05 and filter is NULL AND aaf_esp_all < 0.01 AND aaf_1kg_all_float < 0.01 AND af_exac_all < 0.01  and (is_coding=1 OR is_splicing=1)" --gt-filter "(gt_types).(*).(==HOM_ALT).(any)" EGAD00001002656.GATK.PED_EGAD00001002656.gemini.db  > EGAD.homs &
+time gemini query --show-samples --header -q "select * from variants where aaf < 0.05 and filter is NULL AND aaf_esp_all < 0.0001 AND aaf_1kg_all_float < 0.0001 AND af_exac_all < 0.0001  and (is_coding=1 OR is_splicing=1)" --gt-filter "(gt_types).(*).(==HET).(any)" EGAD00001002656.GATK.PED_EGAD00001002656.gemini.db  > EGAD.hets &
+```
+
+# How many hets and homs do we have?
+## First input data
+```{r}
+library(tidyverse)
+library(ggsci)
+# load in data
+het <- read_tsv('/Volumes/Arges_NFS/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_reanalyze/raw_data/EGAD.hets')
+hom <- read_tsv('/Volumes/Arges_NFS/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_reanalyze/raw_data/EGAD.homs')
+```
+
+## Counts
+```{r}
+# total hom and het
+nrow(hom)
+nrow(het)
+```
+
+## Counts with grouping
+```{r}
+hom %>% group_by(impact_severity) %>% summarise(count=n())
+hom %>% group_by(impact_severity) %>% summarise(count=n())
+```
+
+# Reshape
+We have a column (hom_alt or het)_samples which has a comma separate list of samples with the genotype. I think we should split this up and get a new row for each sample. 
+```{r}
+hom_long <- hom %>% 
+  mutate(Sample = str_split(hom_alt_samples, ",")) %>%  # split with str_split to create a list
+  unnest(Sample, .drop=F) # unnest will spread the list, creating a row for each entry
+
+het_long <- het %>% 
+  mutate(Sample = str_split(het_samples, ",")) %>%  # split with str_split to create a list
+  unnest(Sample, .drop=F) # unnest will spread the list, creating a row for each entry
+```
+
+## Density plots of counts of variants grouped by impact_severity and sample
+Low is underrepresented because most are filtered out by allele frequency at SQL query
+```{r}
+hom_long %>% group_by(impact_severity, Sample) %>% summarise(count=n()) %>% mutate(`Impact Severity` = factor(impact_severity, levels = c('LOW','MED','HIGH'))) %>% ggplot(aes(x=count, y=`Impact Severity`, fill=`Impact Severity`)) + geom_density_ridges(scale=10) + theme_minimal() + scale_fill_npg()
+
+het_long %>% group_by(impact_severity, Sample) %>% summarise(count=n()) %>% mutate(`Impact Severity` = factor(impact_severity, levels = c('LOW','MED','HIGH'))) %>% ggplot(aes(x=count, y=`Impact Severity`, fill=`Impact Severity`)) + geom_density_ridges(scale=10) + theme_minimal() + scale_fill_npg()
+```
+# Load in sample metadata
+```{r}
+metadata <- readxl::read_excel(path='~/git/EGA_EGAD00001002656_NGS_reanalyze/1-s2.0-S0002929716305274-mmc3.xlsx') %>% mutate(Sample=Patient)
+metadata
+```
