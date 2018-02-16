@@ -13,8 +13,8 @@ sinteractive
 module load gemini
 cd /data/mcgaugheyd/projects/nei/mcgaughey/EGA_EGAD00001002656_7n/vcf_annotated
 # just search once (well, twice)
-time gemini query --show-samples --header -q "select * from variants where aaf < 0.05 and filter is NULL AND aaf_esp_all < 0.01 AND aaf_1kg_all_float < 0.01 AND af_exac_all < 0.01  and (is_coding=1 OR is_splicing=1)" --gt-filter "(gt_types).(*).(==HOM_ALT).(any)" EGAD00001002656.GATK.PED_EGAD00001002656.gemini.db  > EGAD.homs &
-time gemini query --show-samples --header -q "select * from variants where aaf < 0.05 and filter is NULL AND aaf_esp_all < 0.0001 AND aaf_1kg_all_float < 0.0001 AND af_exac_all < 0.0001  and (is_coding=1 OR is_splicing=1)" --gt-filter "(gt_types).(*).(==HET).(any)" EGAD00001002656.GATK.PED_EGAD00001002656.gemini.db  > EGAD.hets &
+time gemini query --show-samples --header -q "select * from variants where aaf < 0.05 and filter is NULL AND aaf_esp_all < 0.01 AND aaf_1kg_all_float < 0.01 AND af_exac_all < 0.01  and (is_coding=1 OR is_splicing=1 OR impact_severity='HIGH' OR clinvar_sig LIKE '%patho%')" --gt-filter "(gt_types).(*).(==HOM_ALT).(any)" EGAD00001002656.GATK.PED_EGAD00001002656.gemini.db  > EGAD.homs &
+time gemini query --show-samples --header -q "select * from variants where aaf < 0.05 and filter is NULL AND aaf_esp_all < 0.0001 AND aaf_1kg_all_float < 0.0001 AND af_exac_all < 0.0001  and (is_coding=1 OR is_splicing=1 OR impact_severity='HIGH' OR clinvar_sig LIKE '%patho%')" --gt-filter "(gt_types).(*).(==HET).(any)" EGAD00001002656.GATK.PED_EGAD00001002656.gemini.db  > EGAD.hets &
 ```
 
 # How many hets and homs do we have?
