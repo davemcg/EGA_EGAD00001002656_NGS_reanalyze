@@ -87,3 +87,12 @@ metadata %>% filter(Variant_genomic %in% var_gen) %>%
   filter(!Variant_genomic %in% 
            (all %>% mutate(Variant_genomic = paste0(chrom, ':', start + 1, ref, '>', alt)) %>% pull(Variant_genomic)))
 ```
+
+# Function to check gemini database for variants by (rough) position
+```{r}
+gemini_query <- function(chrom, pos) {
+  query <- paste0("gemini query --show-samples --header -q 'select chrom, ref, alt, start, end, is_coding, aaf,filter, aaf_esp_all, aaf_1kg_all_float, af_exac_all, impact, impact_severity, clinvar_sig from variants where chrom==\"", chrom, "  and start > ", start-5, "and start < ", start + 5, "' /Volumes/Arges/NGS_data/DNA/gemini_db/EGAD00001002656.GATK.PED_EGAD00001002656.gemini.db")
+  system(query)
+}
+```
+```
