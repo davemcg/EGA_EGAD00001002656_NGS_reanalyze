@@ -126,20 +126,69 @@ Group by:
 
 Subsample the non-pathogenic to be 10x the size of the pathogenic to reduce class imbalance
 ```{r}
-set.seed(115470)
-model_data_path <- all %>% 
-  select(variant_id, filter, type, call_rate, num_hom_ref, num_het, num_hom_alt, aaf, gene, is_exonic, is_coding, is_lof, is_splicing, impact, impact_so, impact_severity, polyphen_score, sift_score, gene_eyediseaseclass, hgmd_overlap, aaf_1kg_afr_float:an_exac_sas, max_aaf_all, pli, pnull, precessive, pfam_domain, phylop_100way, canonical, cadd_phred, Genotype) %>% 
+
+all_PATH <- all %>% 
+  select(variant_id, filter, type, call_rate, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, impact_so, impact_severity, polyphen_score, sift_score, aaf_1kg_afr_float:an_exac_sas, max_aaf_all, pli, pnull, precessive, phylop_100way, canonical, cadd_phred, Genotype, Status, Complicated_Status) %>% 
+  filter(Status=='Pathogenic') %>% 
   unique()
-  
-
-answer_key <- all %>% 
-  select(variant_id, Status, Complicated_Status) %>% unique()
-
+all_NOT_PATH <- all %>% 
+ select(variant_id, filter, type, call_rate, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, impact_so, impact_severity, polyphen_score, sift_score, aaf_1kg_afr_float:an_exac_sas, max_aaf_all, pli, pnull, precessive, phylop_100way, canonical, cadd_phred, Genotype, Status, Complicated_Status) %>% 
+  filter(Status=='Not Pathogenic') %>% 
+  unique()
+ 
+# multiply path by 10x with duplications
+all_PATH_10X <- bind_rows(replicate(10, all_PATH, simplify = FALSE))
 # cut down pathogenic to 10x of path
+set.seed(115470)
+all_NOT_PATH_CUT <- all_NOT_PATH %>% sample_n(nrow(all_PATH_10X) * 10)
 
-train_key <- answer_key %>% 
-  group_by(Status, CH_Status, Genotype) %>% 
-  sample_frac(0.5)
+ML_set <- rbind(all_PATH_10X, all_NOT_PATH_CUT)
 
-test_key <- answer_key %>% filter()
+#cadd phred has NA
+ML_set[is.na(ML_set)] <- 0
+# convert chr to factor
+ML_set <- ML_set %>%  mutate_each_( funs(as.factor(.)), names( .[,sapply(., is.character)] ))
+# Fix numeric that are fctr
+ML_set$polyphen_score <- as.numeric(ML_set$polyphen_score)
+ML_set$sift_score <- as.numeric(ML_set$sift_score)
+ML_set$adj_exp_lof <- as.numeric(ML_set$adj_exp_lof)
+ML_set$adj_exp_mis <- as.numeric(ML_set$adj_exp_mis)
+ML_set$adj_exp_syn <- as.numeric(ML_set$adj_exp_syn)
+ML_set$pli <- as.numeric(ML_set$pli)
+ML_set$pnull <- as.numeric(ML_set$pnull)
+ML_set$precessive <- as.numeric(ML_set$precessive)
+ML_set$phylop_100way <- as.numeric(ML_set$phylop_100way)
+
+
+```
+
+## Train and Test sets
+```{r}
+set.seed(115470)
+train_set <- ML_set %>% 
+  group_by(Status, Complicated_Status) %>% 
+  sample_frac(0.5) %>% ungroup()
+
+test_set <- ML_set %>% 
+  filter(!variant_id %in% train_set$variant_id)
+```
+
+## RF
+```{r}
+library(caret)
+
+fitControl <- trainControl(## 10-fold CV
+  method = "oob",
+  number = 5,
+  classProbs=T,
+  savePredictions = T)
+
+
+set.seed(825)
+rfFit_tissue <- train(x=train_set %>% select(-variant_id, -Status, -Complicated_Status) %>% data.frame(), 
+                      y = train_set$Status, 
+                      method = "rf", 
+                      trControl = fitControl)
+
+
 ```
