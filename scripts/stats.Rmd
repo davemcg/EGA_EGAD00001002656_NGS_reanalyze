@@ -90,9 +90,56 @@ metadata %>% filter(Variant_genomic %in% var_gen) %>%
 
 # Function to check gemini database for variants by (rough) position
 ```{r}
-gemini_query <- function(chrom, pos) {
-  query <- paste0("gemini query --show-samples --header -q 'select chrom, ref, alt, start, end, is_coding, aaf,filter, aaf_esp_all, aaf_1kg_all_float, af_exac_all, impact, impact_severity, clinvar_sig from variants where chrom==\"", chrom, "  and start > ", start-5, "and start < ", start + 5, "' /Volumes/Arges/NGS_data/DNA/gemini_db/EGAD00001002656.GATK.PED_EGAD00001002656.gemini.db")
-  system(query)
+gemini_query <- function(chrom, start) {
+  query <- paste0("gemini query --show-samples --header -q 'select chrom, ref, alt, start, end, is_coding, aaf,filter, aaf_esp_all, aaf_1kg_all_float, af_exac_all, impact, impact_severity, clinvar_sig from variants where chrom==\"", chrom, "  and start > ", start-5, " and start < ", start + 5, "' /Volumes/Arges/NGS_data/DNA/gemini_db/EGAD00001002656.GATK.PED_EGAD00001002656.gemini.db")
+  #system(query)
+  query
 }
 ```
+
+# ID Compound Het
+```{r}
+sample_gene_comp_het <- metadata %>% filter(Status=='Solved'  & Variant_HGVSc!='NA' & GT=='0/1') %>% group_by(Sample, Gene) %>% summarise(Count=n()) %>% filter(Count>1) 
+metadata <- left_join(metadata, sample_gene_comp_het) %>% mutate(Comp_Het_Path = case_when(Count >= 2 ~ 'CH', 
+                                                                                           TRUE ~ 'No')) %>% 
+  select(-Count)
+```
+# ML
+Label variants as pathogenic
+```{r}
+all <- all %>% mutate(Simple_Status = case_when(hgvsc %in% (metadata %>% filter(Status=='Solved') %>% pull(Variant_HGVSc)) ~ 'Pathogenic',
+                                         TRUE ~ 'Not Pathogenic')) %>% 
+  mutate(Complicated_Status = case_when(hgvsc %in% (metadata %>% filter(Comp_Het_Path == 'Yes') %>% pull(Variant_HGVSc)) ~ 'Comp_Het',
+                                        hgvsc %in% (metadata %>% filter(Status=='Solved' & GT=='0/1') %>% pull(Variant_HGVSc)) ~ 'AD',
+                                        hgvsc %in% (metadata %>% filter(Status=='Solved' & GT=='1/1') %>% pull(Variant_HGVSc)) ~ 'AR',
+                                        
+                               TRUE ~ 'Not Pathogenic'))
+```
+
+## Subsample
+Split in training / testing
+
+Group by:
+- Status (solved /not solved) <- drop Partially solved
+- Genotype (Hom / Het)
+- Comp Het (two Hets in one gene)
+
+Subsample the non-pathogenic to be 10x the size of the pathogenic to reduce class imbalance
+```{r}
+set.seed(115470)
+model_data_path <- all %>% 
+  select(variant_id, filter, type, call_rate, num_hom_ref, num_het, num_hom_alt, aaf, gene, is_exonic, is_coding, is_lof, is_splicing, impact, impact_so, impact_severity, polyphen_score, sift_score, gene_eyediseaseclass, hgmd_overlap, aaf_1kg_afr_float:an_exac_sas, max_aaf_all, pli, pnull, precessive, pfam_domain, phylop_100way, canonical, cadd_phred, Genotype) %>% 
+  unique()
+  
+
+answer_key <- all %>% 
+  select(variant_id, Status, Complicated_Status) %>% unique()
+
+# cut down pathogenic to 10x of path
+
+train_key <- answer_key %>% 
+  group_by(Status, CH_Status, Genotype) %>% 
+  sample_frac(0.5)
+
+test_key <- answer_key %>% filter()
 ```
