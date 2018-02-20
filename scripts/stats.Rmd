@@ -25,10 +25,10 @@ library(ggsci)
 library(data.table)
 library(ggridges)
 # load in data
-#het <- read_tsv('/Volumes/Arges_NFS/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_reanalyze/raw_data/EGAD.hets')
-#hom <- read_tsv('/Volumes/Arges_NFS/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_reanalyze/raw_data/EGAD.homs')
-het <- fread('~/EGAD.hets_0.01')
-hom <- fread('~/EGAD.homs')
+het <- read_tsv('/Volumes/Arges_NFS/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_reanalyze/raw_data/EGAD.hets')
+hom <- read_tsv('/Volumes/Arges_NFS/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_reanalyze/raw_data/EGAD.homs')
+#het <- fread('~/EGAD.hets_0.01')
+#hom <- fread('~/EGAD.homs')
 ```
 
 ## Counts
@@ -59,7 +59,7 @@ het_long <- het %>%
 all <- rbind(hom_long, het_long)
 ```
 
-## Density plots of counts of variants grouped by impact_severity and sample
+## Ridges plots of counts of variants grouped by impact_severity and sample
 Low is underrepresented because most are filtered out by allele frequency at SQL query
 ```{r}
 hom_long %>% group_by(impact_severity, Sample) %>% summarise(count=n()) %>% mutate(`Impact Severity` = factor(impact_severity, levels = c('LOW','MED','HIGH'))) %>% ggplot(aes(x=count, y=`Impact Severity`, fill=`Impact Severity`)) + geom_density_ridges(scale=10) + theme_minimal() + scale_fill_npg()
@@ -71,7 +71,7 @@ het_long %>% group_by(impact_severity, Sample) %>% summarise(count=n()) %>% muta
 metadata <- readxl::read_excel(path='~/git/EGA_EGAD00001002656_NGS_reanalyze/data/1-s2.0-S0002929716305274-mmc3.xlsx') %>% mutate(Sample=Patient)
 metadata
 # vep
-vep <- read_tsv('~/git/EGA_EGAD00001002656_NGS_reanalyze/data/vep_metadata.txt') %>% unique()
+#vep <- read_tsv('~/git/EGA_EGAD00001002656_NGS_reanalyze/data/vep_metadata.txt') %>% unique()
 ```
 
 # *Solved* case variants that don't match to gemini search by HGVSc
@@ -164,6 +164,19 @@ ML_set$Status <- factor(ML_set$Status, levels=c('Pathogenic','NotPathogenic'))
 
 ```
 
+## One hot encoding (Dummy variables)
+Turn categorical factors into variables
+
+Many ML algorithms can't handle factor
+
+You can feed this into the `Train and Test sets` section below if you are using something like a GLM or NN. 
+```{r}
+temp <- ML_set %>% dplyr::select(-filter, -Status, -Complicated_Status)
+dmy <- dummyVars(" ~ .", data = temp, fullRank=T)
+ML_set_dummy <- data.frame(predict(dmy, newdata = temp))
+ML_set_dummy <- ML_set_dummy %>% mutate(Status = ML_set$Status, Complicated_Status = ML_set$Complicated_Status)
+```
+
 ## Train and Test sets
 ```{r}
 set.seed(115470)
@@ -175,20 +188,34 @@ test_set <- ML_set %>%
   filter(!variant_id %in% train_set$variant_id)
 ```
 
+## Recipe
+skip for now
+```{r, eval=FALSE}
+library(caret)
+train_setR <- train_set %>% dplyr::select(-Complicated_Status, -variant_id)
+rec_obj <- recipe(Status ~ ., data = train_setR)
+```
+
+
+
 ## RF
 ```{r}
 library(caret)
-library(plotROC)
-fitControl <- trainControl(## 10-fold CV
-  method = "cv",
+#library(plotROC)
+fitControl <- trainControl(## 5-fold CV
+  method = "repeatedcv",
   number = 5,
+  repeats = 5, 
   classProbs=T,
-  savePredictions = T)
+  savePredictions = T,
+  summaryFunction = prSummary,
+  allowParallel = T)
 
 
 set.seed(825)
-rfFit <- train(x=train_set %>% select(-variant_id, -Status, -Complicated_Status) %>% data.frame(), 
+rfFit <- caret::train(x=train_set %>% dplyr::select(-variant_id, -Status, -Complicated_Status) %>% data.frame(), 
                       y = train_set$Status, 
+                      preProcess = c("scale", "center"),
                       method = "rf", 
                       trControl = fitControl)
 rfFit
