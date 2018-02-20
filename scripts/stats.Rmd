@@ -183,18 +183,21 @@ fitControl <- trainControl(## 10-fold CV
   method = "cv",
   number = 5,
   classProbs=T,
-  savePredictions = T)
+  savePredictions = T,
+  sampling = 'smote')
 
 
 set.seed(825)
 rfFit <- train(x=train_set %>% select(-variant_id, -Status, -Complicated_Status) %>% data.frame(), 
                       y = train_set$Status, 
                       method = "rf", 
-                      metric = 'Kappa',
                       trControl = fitControl)
 rfFit
-confusionMatrix(data = rfFit$pred$pred, reference = rfFit$pred$obs)
+confusionMatrix(data = rfFit$pred$pred, reference = rfFit$pred$obs, mode='prec_recall')
+# change cutoff
+confusionMatrix(data = rfFit$pred %>% mutate(pred2 = case_when(Pathogenic > 0.2 ~ 'Pathogenic', TRUE ~ 'NotPathogenic')) %>% pull(pred2), reference = rfFit$pred$obs)
 
+randomForest::varImpPlot(rfFit_tissue$finalModel)
 selectedIndices <- rfFit$pred$mtry == rfFit_tissue$bestTune[1,] #26
 
 g <- ggplot(rfFit$pred[selectedIndices, ], aes(m=Pathogenic, d=factor(obs, levels=c('Pathogenic','NotPathogenic')))) + 
