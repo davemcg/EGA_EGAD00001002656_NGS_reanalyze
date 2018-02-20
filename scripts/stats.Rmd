@@ -183,8 +183,7 @@ fitControl <- trainControl(## 10-fold CV
   method = "cv",
   number = 5,
   classProbs=T,
-  savePredictions = T,
-  sampling = 'smote')
+  savePredictions = T)
 
 
 set.seed(825)
