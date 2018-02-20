@@ -107,8 +107,8 @@ metadata <- left_join(metadata, sample_gene_comp_het) %>% mutate(Comp_Het_Path =
 # ML
 Label variants as pathogenic
 ```{r}
-all <- all %>% mutate(Simple_Status = case_when(hgvsc %in% (metadata %>% filter(Status=='Solved') %>% pull(Variant_HGVSc)) ~ 'Pathogenic',
-                                         TRUE ~ 'Not Pathogenic')) %>% 
+all <- all %>% mutate(Status = case_when(hgvsc %in% (metadata %>% filter(Status=='Solved') %>% pull(Variant_HGVSc)) ~ 'Pathogenic',
+                                         TRUE ~ 'NotPathogenic')) %>% 
   mutate(Complicated_Status = case_when(hgvsc %in% (metadata %>% filter(Comp_Het_Path == 'Yes') %>% pull(Variant_HGVSc)) ~ 'Comp_Het',
                                         hgvsc %in% (metadata %>% filter(Status=='Solved' & GT=='0/1') %>% pull(Variant_HGVSc)) ~ 'AD',
                                         hgvsc %in% (metadata %>% filter(Status=='Solved' & GT=='1/1') %>% pull(Variant_HGVSc)) ~ 'AR',
@@ -133,14 +133,15 @@ all_PATH <- all %>%
   unique()
 all_NOT_PATH <- all %>% 
  select(variant_id, filter, type, call_rate, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, impact_so, impact_severity, polyphen_score, sift_score, aaf_1kg_afr_float:an_exac_sas, max_aaf_all, pli, pnull, precessive, phylop_100way, canonical, cadd_phred, Genotype, Status, Complicated_Status) %>% 
-  filter(Status=='Not Pathogenic') %>% 
+  filter(Status=='NotPathogenic') %>% 
   unique()
  
 # multiply path by 10x with duplications
-all_PATH_10X <- bind_rows(replicate(10, all_PATH, simplify = FALSE))
+#all_PATH_10X <- bind_rows(replicate(10, all_PATH, simplify = FALSE))
+all_PATH_10X <- all_PATH
 # cut down pathogenic to 10x of path
 set.seed(115470)
-all_NOT_PATH_CUT <- all_NOT_PATH %>% sample_n(nrow(all_PATH_10X) * 10)
+all_NOT_PATH_CUT <- all_NOT_PATH# %>% sample_n(nrow(all_PATH_10X) * 1000)
 
 ML_set <- rbind(all_PATH_10X, all_NOT_PATH_CUT)
 
@@ -178,8 +179,9 @@ test_set <- ML_set %>%
 library(caret)
 
 fitControl <- trainControl(## 10-fold CV
-  method = "oob",
+  method = "cv",
   number = 5,
+  summaryFunction = twoClassSummary,
   classProbs=T,
   savePredictions = T)
 
@@ -190,5 +192,12 @@ rfFit_tissue <- train(x=train_set %>% select(-variant_id, -Status, -Complicated_
                       method = "rf", 
                       trControl = fitControl)
 
+selectedIndices <- rfFit_tissue$pred$mtry == rfFit_tissue$bestTune[1,] #26
 
+g <- ggplot(rfFit_tissue$pred[selectedIndices, ], aes(m=M, d=factor(obs, levels = c("R", "M")))) + 
+  geom_roc(n.cuts=0) + 
+  coord_equal() +
+  style_roc()
+
+g + annotate("text", x=0.75, y=0.25, label=paste("AUC =", round((calc_auc(g))$AUC, 4)))
 ```
