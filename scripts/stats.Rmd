@@ -141,7 +141,7 @@ all_NOT_PATH <- all %>%
 all_PATH_10X <- all_PATH
 # cut down pathogenic to 10x of path
 set.seed(115470)
-all_NOT_PATH_CUT <- all_NOT_PATH# %>% sample_n(nrow(all_PATH_10X) * 1000)
+all_NOT_PATH_CUT <- all_NOT_PATH #%>% sample_n(nrow(all_PATH_10X) * 15)
 
 ML_set <- rbind(all_PATH_10X, all_NOT_PATH_CUT)
 
@@ -159,6 +159,7 @@ ML_set$pli <- as.numeric(ML_set$pli)
 ML_set$pnull <- as.numeric(ML_set$pnull)
 ML_set$precessive <- as.numeric(ML_set$precessive)
 ML_set$phylop_100way <- as.numeric(ML_set$phylop_100way)
+ML_set$Status <- factor(ML_set$Status, levels=c('Pathogenic','NotPathogenic'))
 
 
 ```
@@ -177,24 +178,26 @@ test_set <- ML_set %>%
 ## RF
 ```{r}
 library(caret)
-
+library(plotROC)
 fitControl <- trainControl(## 10-fold CV
   method = "cv",
   number = 5,
-  summaryFunction = twoClassSummary,
   classProbs=T,
   savePredictions = T)
 
 
 set.seed(825)
-rfFit_tissue <- train(x=train_set %>% select(-variant_id, -Status, -Complicated_Status) %>% data.frame(), 
+rfFit <- train(x=train_set %>% select(-variant_id, -Status, -Complicated_Status) %>% data.frame(), 
                       y = train_set$Status, 
                       method = "rf", 
+                      metric = 'Kappa',
                       trControl = fitControl)
+rfFit
+confusionMatrix(data = rfFit$pred$pred, reference = rfFit$pred$obs)
 
-selectedIndices <- rfFit_tissue$pred$mtry == rfFit_tissue$bestTune[1,] #26
+selectedIndices <- rfFit$pred$mtry == rfFit_tissue$bestTune[1,] #26
 
-g <- ggplot(rfFit_tissue$pred[selectedIndices, ], aes(m=M, d=factor(obs, levels = c("R", "M")))) + 
+g <- ggplot(rfFit$pred[selectedIndices, ], aes(m=Pathogenic, d=factor(obs, levels=c('Pathogenic','NotPathogenic')))) + 
   geom_roc(n.cuts=0) + 
   coord_equal() +
   style_roc()
