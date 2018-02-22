@@ -123,78 +123,9 @@ all <- all %>% mutate(Status = case_when(hgvsc %in% (metadata %>% filter(Status=
                                         
                                         TRUE ~ 'Not Pathogenic'))
 
-<<<<<<< HEAD
+
 output_file <- '/Volumes/Arges_NFS/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_reanalyze/clean_data/gemini_out_variants_het_and_hom.Rdata'
 if(!file.exists(output_file)){
    save(all, file = output_file)
 }
-=======
-Group by:
-- Status (solved /not solved) <- drop Partially solved
-- Genotype (Hom / Het)
-- Comp Het (two Hets in one gene)
-
-Subsample the non-pathogenic to be 10x the size of the pathogenic to reduce class imbalance
-```{r}
-
-all_PATH <- all %>% 
-  select(variant_id, filter, type, call_rate, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, impact_so, impact_severity, polyphen_score, sift_score, aaf_1kg_afr_float:an_exac_sas, max_aaf_all, pli, pnull, precessive, phylop_100way, canonical, cadd_phred, Genotype, Status, Complicated_Status) %>% 
-  filter(Status=='Pathogenic') %>% 
-  unique()
-all_NOT_PATH <- all %>% 
- select(variant_id, filter, type, call_rate, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, impact_so, impact_severity, polyphen_score, sift_score, aaf_1kg_afr_float:an_exac_sas, max_aaf_all, pli, pnull, precessive, phylop_100way, canonical, cadd_phred, Genotype, Status, Complicated_Status) %>% 
-  filter(Status=='NotPathogenic') %>% 
-  unique()
- 
-# multiply path by 10x with duplications
-#all_PATH_10X <- bind_rows(replicate(10, all_PATH, simplify = FALSE))
-all_PATH_10X <- all_PATH
-# cut down pathogenic to 10x of path
-set.seed(115470)
-all_NOT_PATH_CUT <- all_NOT_PATH #%>% sample_n(nrow(all_PATH_10X) * 15)
-
-ML_set <- rbind(all_PATH_10X, all_NOT_PATH_CUT)
-
-#cadd phred has NA
-ML_set[is.na(ML_set)] <- 0
-# convert chr to factor
-ML_set <- ML_set %>%  mutate_each_( funs(as.factor(.)), names( .[,sapply(., is.character)] ))
-# Fix numeric that are fctr
-ML_set$polyphen_score <- as.numeric(ML_set$polyphen_score)
-ML_set$sift_score <- as.numeric(ML_set$sift_score)
-ML_set$adj_exp_lof <- as.numeric(ML_set$adj_exp_lof)
-ML_set$adj_exp_mis <- as.numeric(ML_set$adj_exp_mis)
-ML_set$adj_exp_syn <- as.numeric(ML_set$adj_exp_syn)
-ML_set$pli <- as.numeric(ML_set$pli)
-ML_set$pnull <- as.numeric(ML_set$pnull)
-ML_set$precessive <- as.numeric(ML_set$precessive)
-ML_set$phylop_100way <- as.numeric(ML_set$phylop_100way)
-ML_set$Status <- factor(ML_set$Status, levels=c('Pathogenic','NotPathogenic'))
-
-
 ```
-
-## One hot encoding (Dummy variables)
-Turn categorical factors into variables
-
-Many ML algorithms can't handle factor
-
-You can feed this into the `Train and Test sets` section below if you are using something like a GLM or NN. 
-```{r, eval=F}
-temp <- ML_set %>% dplyr::select(-filter, -Status, -Complicated_Status)
-dmy <- dummyVars(" ~ .", data = temp, fullRank=T)
-ML_set_dummy <- data.frame(predict(dmy, newdata = temp))
-ML_set_dummy <- ML_set_dummy %>% mutate(Status = ML_set$Status, Complicated_Status = ML_set$Complicated_Status)
->>>>>>> 8cfe3c1a4fc2c7c9f238ddd7b0fff23677a9755c
-```
-
-# Plot status breakdown by disease
-```{r}
-metadata %>% mutate(Type = Complicated_Status) %>% 
-  filter(Complicated_Status != 'Not Pathogenic') %>%  
-  ggplot(aes(x=Phenotype, fill=Type)) + geom_bar(position = 'dodge') + 
-  ggsci::scale_color_aaas() + 
-  theme_minimal() + 
-  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
-```
-
