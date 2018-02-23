@@ -1,5 +1,5 @@
 ---
-title: "Stats on Hets and Homs"
+title: "Prep Hets and Homs Gemini Call for Modeling"
 output: html_notebook
 ---
 
@@ -11,7 +11,7 @@ Queried the `EGAD00001002656.GATK.PED_EGAD00001002656.gemini.db` gemini database
 #biowulf2
 sinteractive
 module load gemini
-cd /data/mcgaugheyd/projects/nei/mcgaughey/EGA_EGAD00001002656_7n/vcf_annotated
+cd /data/mcgaugheyd/projects/nei/mcgaughey/EGA_EGAD00001002656_7n/vcf_annotated_withCADD
 # just search once (well, twice)
 time gemini query --show-samples --header -q "select * from variants where aaf < 0.05 and filter is NULL AND (aaf_esp_all < 0.01 AND aaf_1kg_all_float < 0.01 AND af_exac_all < 0.01  AND (is_coding=1 OR is_splicing=1)) OR impact_severity='HIGH' OR clinvar_sig LIKE '%patho%'" --gt-filter "(gt_types).(*).(==HOM_ALT).(any)" EGAD00001002656.GATK.PED_EGAD00001002656.gemini.db  > EGAD.homs &
 time gemini query --show-samples --header -q "select * from variants where aaf < 0.05 and filter is NULL AND (aaf_esp_all < 0.0001 AND aaf_1kg_all_float < 0.0001 AND af_exac_all < 0.0001  and (is_coding=1 OR is_splicing=1)) OR impact_severity='HIGH' OR clinvar_sig LIKE '%patho%'" --gt-filter "(gt_types).(*).(==HET).(any)" EGAD00001002656.GATK.PED_EGAD00001002656.gemini.db  > EGAD.hets &
@@ -25,10 +25,10 @@ library(ggsci)
 library(data.table)
 library(ggridges)
 # load in data
-het <- read_tsv('/Volumes/Arges_NFS/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_reanalyze/raw_data/EGAD.hets')
-hom <- read_tsv('/Volumes/Arges_NFS/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_reanalyze/raw_data/EGAD.homs')
-het <- fread('~/EGAD.hets')
-hom <- fread('~/EGAD.homs')
+het <- fread('gzcat /Volumes/Arges_NFS/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_reanalyze/raw_data/EGAD.hets.gz')
+hom <- fread('gzcat /Volumes/Arges_NFS/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_reanalyze/raw_data/EGAD.homs.gz')
+#het <- fread('~/EGAD.hets')
+#hom <- fread('~/EGAD.homs')
 ```
 
 ## Counts
@@ -41,7 +41,7 @@ nrow(het)
 ## Counts with grouping
 ```{r}
 hom %>% group_by(impact_severity) %>% summarise(count=n())
-hom %>% group_by(impact_severity) %>% summarise(count=n())
+het %>% group_by(impact_severity) %>% summarise(count=n())
 ```
 
 # Reshape
@@ -75,11 +75,13 @@ metadata
 ```
 
 # *Solved* case variants that don't match to gemini search by HGVSc
+Many fail to match because my transcript is different
 ```{r}
 metadata %>% filter((!Variant_HGVSc %in% all$hgvsc) & Status=='Solved'  & Variant_HGVSc!='NA') 
 ```
 
 # Now try to match by chr pos ref alt
+Most of these fail to match because their population AF is >0.0001
 ```{r}
 var_gen <- metadata %>% filter((!Variant_HGVSc %in% all$hgvsc) & Status=='Solved'  & Variant_HGVSc!='NA') %>% pull(Variant_genomic)
 
