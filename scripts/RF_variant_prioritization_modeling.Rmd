@@ -97,14 +97,17 @@ library(caret)
 library(mlbench)
 library(parallel)
 library(doParallel)
+library(MLmetrics)
 #library(plotROC)
+
+
 fitControl <- trainControl(## 5-fold CV
-  method = "LOOCV",
-  number = 5,
-  #classProbs=T,
-  #savePredictions = T,
+  method = "oob",
+ # number = 5,
+  classProbs=T,
+  savePredictions = T,
   allowParallel = T)
-cluster <- makeCluster(detectCores() - 4) # leave some cores for me!
+cluster <- makeCluster(detectCores() - 1) # leave some cores for me!
 registerDoParallel(cluster)
 
 set.seed(825)
@@ -112,14 +115,16 @@ rfFit <- caret::train(x=train_set %>% dplyr::select(-variant_id, -Status, -Compl
                       y = train_set$Status, 
                       preProcess = c("scale", "center"),
                       method = "rf", 
-                      metric = 'Kappa',
                       trControl = fitControl)
 rfFit
 stopCluster(cluster)
 registerDoSEQ() # forces R down to single thread - can't do parallel run after this?
 
+new_predictions <- predict.train(rfFit, test_set, type='prob') %>%
+  mutate(Answers = test_set$Status, Prediction = case_when(Pathogenic > 0.2 ~ 'Pathogenic', TRUE ~ 'NotPathogenic'))
 
-confusionMatrix(data = rfFit$pred$pred, reference = rfFit$pred$obs, mode='prec_recall')
+
+confusionMatrix(data = new_predictions$Prediction, reference = new_predictions$Answers, mode='prec_recall')
 # change cutoff
 confusionMatrix(data = rfFit$pred %>% mutate(pred2 = case_when(Pathogenic > 0.2 ~ 'Pathogenic', TRUE ~ 'NotPathogenic')) %>% pull(pred2), reference = rfFit$pred$obs)
 
