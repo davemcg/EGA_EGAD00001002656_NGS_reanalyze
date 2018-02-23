@@ -13,6 +13,7 @@ load('/Volumes/Arges_NFS/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_reanalyze/cl
 
 # Set up data for modeling
 ```{r}
+library(tidyverse)
 all_PATH <- all %>% 
   select(variant_id, filter, type, call_rate, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, impact_so, impact_severity, polyphen_score, sift_score, aaf_1kg_afr_float:an_exac_sas, max_aaf_all, pli, pnull, precessive, phylop_100way, canonical, cadd_phred, Genotype, Status, Complicated_Status) %>% 
   filter(Status=='Pathogenic') %>% 
@@ -21,31 +22,37 @@ all_NOT_PATH <- all %>%
   select(variant_id, filter, type, call_rate, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, impact_so, impact_severity, polyphen_score, sift_score, aaf_1kg_afr_float:an_exac_sas, max_aaf_all, pli, pnull, precessive, phylop_100way, canonical, cadd_phred, Genotype, Status, Complicated_Status) %>% 
   filter(Status=='NotPathogenic') %>% 
   unique()
+all_set <- rbind(all_PATH, all_NOT_PATH)
+process <- function(df) {
+  #cadd phred has NA
+  df[is.na(df)] <- 0
+  # convert chr to factor
+  df <- df %>%  mutate_each_( funs(as.factor(.)), names( .[,sapply(., is.character)] ))
+  # Fix numeric that are fctr
+  df$polyphen_score <- as.numeric(df$polyphen_score)
+  df$sift_score <- as.numeric(df$sift_score)
+  df$adj_exp_lof <- as.numeric(df$adj_exp_lof)
+  df$adj_exp_mis <- as.numeric(df$adj_exp_mis)
+  df$adj_exp_syn <- as.numeric(df$adj_exp_syn)
+  df$pli <- as.numeric(df$pli)
+  df$pnull <- as.numeric(df$pnull)
+  df$precessive <- as.numeric(df$precessive)
+  df$phylop_100way <- as.numeric(df$phylop_100way)
+  df$Status <- factor(df$Status, levels=c('Pathogenic','NotPathogenic'))
+  df
+}
+
+all_set <- process(all_set)
 
 # multiply path by 10x with duplications
 #all_PATH_10X <- bind_rows(replicate(10, all_PATH, simplify = FALSE))
-all_PATH_10X <- all_PATH
-# cut down pathogenic to 10x of path
+all_PATH_10X <- all_set %>% filter(Status=='Pathogenic')
+# cut down pathogenic to 5x of path
 set.seed(115470)
-all_NOT_PATH_CUT <- all_NOT_PATH #%>% sample_n(nrow(all_PATH_10X) * 15)
+all_NOT_PATH_CUT <- all_set %>% filter(Status=='NotPathogenic') %>% sample_n(nrow(all_PATH_10X) * 5)
 
 ML_set <- rbind(all_PATH_10X, all_NOT_PATH_CUT)
 
-#cadd phred has NA
-ML_set[is.na(ML_set)] <- 0
-# convert chr to factor
-ML_set <- ML_set %>%  mutate_each_( funs(as.factor(.)), names( .[,sapply(., is.character)] ))
-# Fix numeric that are fctr
-ML_set$polyphen_score <- as.numeric(ML_set$polyphen_score)
-ML_set$sift_score <- as.numeric(ML_set$sift_score)
-ML_set$adj_exp_lof <- as.numeric(ML_set$adj_exp_lof)
-ML_set$adj_exp_mis <- as.numeric(ML_set$adj_exp_mis)
-ML_set$adj_exp_syn <- as.numeric(ML_set$adj_exp_syn)
-ML_set$pli <- as.numeric(ML_set$pli)
-ML_set$pnull <- as.numeric(ML_set$pnull)
-ML_set$precessive <- as.numeric(ML_set$precessive)
-ML_set$phylop_100way <- as.numeric(ML_set$phylop_100way)
-ML_set$Status <- factor(ML_set$Status, levels=c('Pathogenic','NotPathogenic'))
 
 
 ```
@@ -59,10 +66,16 @@ You can feed this into the `Train and Test sets` section below if you are using 
 
 Skip for now
 ```{r, eval = F}
+library(caret)
 temp <- ML_set %>% dplyr::select(-filter, -Status, -Complicated_Status)
 dmy <- dummyVars(" ~ .", data = temp, fullRank=T)
 ML_set_dummy <- data.frame(predict(dmy, newdata = temp))
 ML_set_dummy <- ML_set_dummy %>% mutate(Status = ML_set$Status, Complicated_Status = ML_set$Complicated_Status)
+# recreate for full data
+temp <- rbind(all_PATH, all_NOT_PATH) %>% dplyr::select(-filter, -Status, -Complicated_Status)
+dmy <- dummyVars(" ~ .", data = temp, fullRank=T)
+all_dummy <- data.frame(predict(dmy, newdata = temp))
+all_dummy <- ML_set_dummy %>% mutate(Status = ML_set$Status, Complicated_Status = ML_set$Complicated_Status)
 ```
 
 ## Train and Test sets
@@ -72,10 +85,20 @@ Split in training / testing
 set.seed(115470)
 train_set <- ML_set %>% 
   group_by(Status, Complicated_Status) %>% 
+ # filter(!Complicated_Status=='Comp_Het') %>% # remove comp hets for now
   sample_frac(0.5) %>% ungroup()
+# remove no variance columns
+#var_columns <- colnames(train_set)[apply(train_set, MARGIN = 2, function(x) var(x) > 0)]
+#var_columns <- var_columns[!is.na(var_columns)]
+#train_set <- train_set[,c(var_columns, 'Status', 'Complicated_Status')]
+
 
 test_set <- ML_set %>% 
   filter(!variant_id %in% train_set$variant_id)
+# remove no variance columns
+#var_columns <- colnames(test_set)[apply(test_set, MARGIN = 2, function(x) var(x) > 0)]
+#var_columns <- var_columns[!is.na(var_columns)]
+#test_set <- test_set[,c(var_columns, 'Status', 'Complicated_Status')]
 ```
 
 ## Recipe
@@ -88,10 +111,8 @@ rec_obj <- recipe(Status ~ ., data = train_setR)
 
 
 
-## RF
-This is the only model that kind of works
+## Modeling
 
-Have quickly tried keras, glm, nnet - they are disastrously bad. Probably need to balance classes for another approach to work. 
 ```{r}
 library(caret)
 library(mlbench)
@@ -102,7 +123,7 @@ library(MLmetrics)
 
 
 fitControl <- trainControl(## 5-fold CV
-  method = "oob",
+ # method = "cv",
  # number = 5,
   classProbs=T,
   savePredictions = T,
@@ -111,20 +132,40 @@ cluster <- makeCluster(detectCores() - 1) # leave some cores for me!
 registerDoParallel(cluster)
 
 set.seed(825)
-rfFit <- caret::train(x=train_set %>% dplyr::select(-variant_id, -Status, -Complicated_Status) %>% data.frame(), 
+rfFit <- caret::train(x=train_set %>% dplyr::select(type, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, polyphen_score, sift_score, max_aaf_all, pli, pnull, precessive, phylop_100way, cadd_phred) %>% data.frame(), 
                       y = train_set$Status, 
-                      preProcess = c("scale", "center"),
+                      #preProcess = c("scale", "center"),
                       method = "rf", 
                       trControl = fitControl)
-rfFit
+bglmFit <- caret::train(x=train_set %>% dplyr::select(type, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, polyphen_score, sift_score, max_aaf_all, pli, pnull, precessive, phylop_100way, cadd_phred) %>% data.frame(), 
+                      y = train_set$Status, 
+                      #preProcess = c("scale", "center"),
+                      method = "bayesglm", 
+                      trControl = fitControl)
+xgbTreeFit <- caret::train(x=train_set %>% dplyr::select(type, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, polyphen_score, sift_score, max_aaf_all, pli, pnull, precessive, phylop_100way, cadd_phred)  %>% data.frame(), 
+                      y = train_set$Status, 
+                     # preProcess = c("scale", "center"),
+                      method = "xgbTree", 
+                      trControl = fitControl)
+svmFit <- caret::train(x=train_set %>% dplyr::select(type, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, polyphen_score, sift_score, max_aaf_all, pli, pnull, precessive, phylop_100way, cadd_phred)  %>% data.frame(), 
+                      y = train_set$Status, 
+                      #preProcess = c("scale", "center"),
+                      method = "svmLinear", 
+                      trControl = fitControl)
+
+
+
 stopCluster(cluster)
 registerDoSEQ() # forces R down to single thread - can't do parallel run after this?
+```
 
-new_predictions <- predict.train(rfFit, test_set, type='prob') %>%
-  mutate(Answers = test_set$Status, Prediction = case_when(Pathogenic > 0.2 ~ 'Pathogenic', TRUE ~ 'NotPathogenic'))
-
-
-confusionMatrix(data = new_predictions$Prediction, reference = new_predictions$Answers, mode='prec_recall')
+# ConfusionMatrix your model(s)
+```{r}
+cm_maker <- function(model, data, cutoff=0.5) {
+  new_predictions <- predict(model, data, type='prob') %>%
+    mutate(Answers = data$Status, Prediction = case_when(Pathogenic > cutoff ~ 'Pathogenic', TRUE ~ 'NotPathogenic'))
+  confusionMatrix(data = new_predictions$Prediction, reference = new_predictions$Answers, mode='prec_recall')
+}
 # change cutoff
 confusionMatrix(data = rfFit$pred %>% mutate(pred2 = case_when(Pathogenic > 0.2 ~ 'Pathogenic', TRUE ~ 'NotPathogenic')) %>% pull(pred2), reference = rfFit$pred$obs)
 
