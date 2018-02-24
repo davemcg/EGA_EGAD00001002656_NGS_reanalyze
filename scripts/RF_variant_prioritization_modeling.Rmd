@@ -16,11 +16,11 @@ load('/Volumes/eyeMac/Volumes/Arges/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_r
 ```{r}
 library(tidyverse)
 all_PATH <- all %>% 
-  select(variant_id, filter, type, call_rate, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, impact_so, impact_severity, polyphen_score, sift_score, aaf_1kg_afr_float:an_exac_sas, max_aaf_all, pli, pnull, precessive, phylop_100way, canonical, cadd_phred, Genotype, Status, Complicated_Status) %>% 
+  select(variant_id, filter, type, call_rate, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, impact_so, impact_severity, polyphen_score, sift_score, aaf_1kg_afr_float:an_exac_sas, max_aaf_all, pli, pnull, precessive, phylop_100way,  fitcons_float, lof_z, mis_z, syn_z, gerp_elements, grantham, cadd_phred, Genotype, Status, Complicated_Status) %>% 
   filter(Status=='Pathogenic') %>% 
   unique()
 all_NOT_PATH <- all %>% 
-  select(variant_id, filter, type, call_rate, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, impact_so, impact_severity, polyphen_score, sift_score, aaf_1kg_afr_float:an_exac_sas, max_aaf_all, pli, pnull, precessive, phylop_100way, canonical, cadd_phred, Genotype, Status, Complicated_Status) %>% 
+  select(variant_id, filter, type, call_rate, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, impact_so, impact_severity, polyphen_score, sift_score, aaf_1kg_afr_float:an_exac_sas, max_aaf_all, pli, pnull, precessive, phylop_100way,  fitcons_float, lof_z, mis_z, syn_z, gerp_elements, grantham, cadd_phred, Genotype, Status, Complicated_Status) %>% 
   filter(Status=='NotPathogenic') %>% 
   unique()
 
@@ -40,20 +40,25 @@ process <- function(df) {
   df$pnull <- as.numeric(df$pnull)
   df$precessive <- as.numeric(df$precessive)
   df$phylop_100way <- as.numeric(df$phylop_100way)
+  df$fitcons_float <- as.numeric(df$fitcons_float)
+  df$lof_z <- as.numeric(df$lof_z)
+  df$mis_z <- as.numeric(df$mis_z)
+  df$syn_z <- as.numeric(df$syn_z)
+  df$gerp_elements <- as.numeric(df$gerp_elements)
+  df$grantham <- as.numeric(df$grantham)
   df$Status <- factor(df$Status, levels=c('Pathogenic','NotPathogenic'))
   df
 }
 
 all_set <- process(all_set)
 
-# multiply path by 10x with duplications
-#all_PATH_10X <- bind_rows(replicate(10, all_PATH, simplify = FALSE))
-all_PATH_10X <- all_set %>% filter(Status=='Pathogenic')
+
+all_PATH <- all_set %>% filter(Status=='Pathogenic')
 # cut down pathogenic to 5x of path
 set.seed(115470)
-all_NOT_PATH_CUT <- all_set %>% filter(Status=='NotPathogenic') %>% sample_n(nrow(all_PATH_10X) * 5)
+all_NOT_PATH__CUT <- all_set %>% filter(Status=='NotPathogenic', max_aaf_all < 0.02) %>% sample_n(nrow(all_PATH_10X) * 5)
 
-ML_set <- rbind(all_PATH_10X, all_NOT_PATH_CUT)
+ML_set <- rbind(all_PATH, all_NOT_PATH__CUT)
 
 
 
@@ -66,7 +71,6 @@ Many ML algorithms can't handle factor
 
 You can feed this into the `Train and Test sets` section below if you are using something like a GLM or NN. 
 
-Skip for now
 ```{r, eval = F}
 library(dummies)
 temp <- ML_set %>% dplyr::select(-filter, -Status, -Complicated_Status)
@@ -76,6 +80,13 @@ ML_set_dummy <- temp %>% mutate(Status = ML_set$Status, Complicated_Status = ML_
 temp <- all_set %>% dplyr::select(-filter, -Status, -Complicated_Status)
 temp <- dummy.data.frame(temp, sep='_')
 all_dummy <- temp %>% mutate(Status = all_set$Status, Complicated_Status = all_set$Complicated_Status)
+```
+
+# Identify highly correlated metrics
+```{r}
+correlated <- cor(all_dummy %>% select(-Status, -Complicated_Status))
+indices <- findCorrelation(correlated)
+colnames(all_dummy %>% select(-Status, -Complicated_Status))[indices]
 ```
 
 ## Train and Test sets
@@ -93,7 +104,7 @@ train_set <- ML_set_dummy %>%
 #train_set <- train_set[,c(var_columns, 'Status', 'Complicated_Status')]
 
 
-test_set <- ML_set %>% 
+test_set <- ML_set_dummy %>% 
   filter(!variant_id %in% train_set$variant_id)
 # remove no variance columns
 #var_columns <- colnames(test_set)[apply(test_set, MARGIN = 2, function(x) var(x) > 0)]
@@ -132,7 +143,7 @@ cluster <- makeCluster(detectCores() - 1) # leave some cores for me!
 registerDoParallel(cluster)
 
 set.seed(825)
-columns <- c('type_indel','type_snp','num_hom_ref','num_het','num_hom_alt','aaf','is_exonic','is_coding','is_lof','is_splicing','impact_frameshift_variant','impact_inframe_deletion','impact_inframe_insertion','impact_intron_variant','impact_missense_variant','impact_splice_acceptor_variant','impact_splice_donor_variant','impact_splice_region_variant','impact_start_lost','impact_stop_gained','impact_stop_lost','impact_synonymous_variant','impact_upstream_gene_variant','aaf_1kg_all_float','aaf_esp_all','af_exac_all','pli','pnull','precessive','phylop_100way','cadd_phred')
+columns <- c('type_indel','type_snp','num_hom_ref','num_het','num_hom_alt','aaf','is_lof','is_splicing','impact_frameshift_variant','impact_inframe_deletion','impact_inframe_insertion','impact_intron_variant','impact_missense_variant','impact_splice_acceptor_variant','impact_splice_donor_variant','impact_splice_region_variant','impact_start_lost','impact_stop_gained','impact_stop_lost','impact_synonymous_variant','aaf_1kg_all_float','aaf_esp_all','af_exac_all','pli','pnull','precessive','phylop_100way','cadd_phred', 'polyphen_score', 'impact_severity_HIGH', 'impact_severity_LOW', 'impact_severity_MED', 'polyphen_score', 'sift_score', 'fitcons_float','lof_z','mis_z','syn_z','gerp_elements','grantham')
 rfFit <- caret::train(x=train_set %>% 
                         dplyr::select_(.dots=columns) %>% 
                         data.frame(), 
@@ -148,6 +159,13 @@ bglmFit <- caret::train(x=train_set %>%
                       #preProcess = c("scale", "center"),
                       method = "bayesglm", 
                       trControl = fitControl)
+fdaFit <- caret::train(x=train_set %>% 
+                        dplyr::select_(.dots=columns) %>% 
+                        data.frame(), 
+                      y = train_set$Status, 
+                      #preProcess = c("scale", "center"),
+                      method = "fda", 
+                      trControl = fitControl)
 xgbTreeFit <-caret::train(x=train_set %>% 
                         dplyr::select_(.dots=columns) %>% 
                         data.frame(), 
@@ -155,29 +173,70 @@ xgbTreeFit <-caret::train(x=train_set %>%
                      # preProcess = c("scale", "center"),
                       method = "xgbTree", 
                       trControl = fitControl)
-svmFit <- caret::train(x=train_set %>% 
+c5.0TreeFit <- caret::train(x=train_set %>% 
                         dplyr::select_(.dots=columns) %>% 
                         data.frame(), 
                       y = train_set$Status, 
                       #preProcess = c("scale", "center"),
-                      method = "svmLinear", 
+                      method = "C5.0Tree", 
+                      trControl = fitControl)
+stepLDAFit <- caret::train(x=train_set %>% 
+                        dplyr::select_(.dots=columns) %>% 
+                        data.frame(), 
+                      y = train_set$Status, 
+                      #preProcess = c("scale", "center"),
+                      method = "stepLDA", 
+                      trControl = fitControl)
+# cadd only
+caddFit <- caret::train(x=train_set %>% 
+                        dplyr::select(cadd_phred) %>% 
+                        data.frame(), 
+                      y = train_set$Status, 
+                      #preProcess = c("scale", "center"),
+                      method = "bayesglm", 
                       trControl = fitControl)
 
-
-
-stopCluster(cluster)
-registerDoSEQ() # forces R down to single thread - can't do parallel run after this?
+#stopCluster(cluster)
+#registerDoSEQ() # forces R down to single thread - can't do parallel run after this?
 ```
 
 # ConfusionMatrix your model(s)
 ```{r}
+# fuller_data is all variants, minus the variants in the test_set
+fuller_data = all_dummy %>% filter(!variant_id %in% test_set$variant_id)
+
 cm_maker <- function(model, data, cutoff=0.5) {
   new_predictions <- predict(model, data, type='prob') %>%
     mutate(Answers = data$Status, Prediction = case_when(Pathogenic > cutoff ~ 'Pathogenic', TRUE ~ 'NotPathogenic'))
   confusionMatrix(data = new_predictions$Prediction, reference = new_predictions$Answers, mode='prec_recall')
 }
-# change cutoff
-confusionMatrix(data = rfFit$pred %>% mutate(pred2 = case_when(Pathogenic > 0.2 ~ 'Pathogenic', TRUE ~ 'NotPathogenic')) %>% pull(pred2), reference = rfFit$pred$obs)
+
+cm_maker(bglmFit, fuller_data, cutoff=0.5)
+```
+
+# AUC ROC
+```{r}
+library(PRROC)
+
+aucroc_maker <- function(model, data, cutoff=0.5) {
+  new_predictions <- predict(model, data, type = 'prob') %>%
+    mutate(Answers = data$Status, Prediction = case_when(Pathogenic > cutoff ~ 'Pathogenic', TRUE ~ 'NotPathogenic'))
+  pr.curve(scores.class0 = new_predictions %>% filter(Answers=='Pathogenic') %>% pull(Pathogenic),
+           scores.class1 = new_predictions %>% filter(Answers=='NotPathogenic') %>% pull(Pathogenic),
+           curve = T)
+}
+
+roc_maker <- function(model, data, cutoff=0.5) {
+  new_predictions <- predict(model, data, type = 'prob') %>%
+    mutate(Answers = data$Status, Prediction = case_when(Pathogenic > cutoff ~ 'Pathogenic', TRUE ~ 'NotPathogenic'))
+  roc.curve(scores.class0 = new_predictions %>% filter(Answers=='Pathogenic') %>% pull(Pathogenic),
+           scores.class1 = new_predictions %>% filter(Answers=='NotPathogenic') %>% pull(Pathogenic),
+           curve = T)
+}
+
+plot(aucroc_maker(rfFit, all_dummy %>% filter(!variant_id %in% test_set$variant_id)))
+plot(aucroc_maker(caddFit, all_dummy %>% filter(!variant_id %in% test_set$variant_id)))
+```
 
 randomForest::varImpPlot(rfFit_tissue$finalModel)
 selectedIndices <- rfFit$pred$mtry == rfFit_tissue$bestTune[1,] #26
