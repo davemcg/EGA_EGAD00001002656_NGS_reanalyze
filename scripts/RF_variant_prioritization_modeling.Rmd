@@ -8,7 +8,8 @@ output: html_notebook
 
 # Load data from stats.Rmd
 ```{r}
-load('/Volumes/Arges_NFS/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_reanalyze/clean_data/gemini_out_variants_het_and_hom.Rdata')
+# load('/Volumes/Arges_NFS/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_reanalyze/clean_data/gemini_out_variants_het_and_hom.Rdata')
+load('/Volumes/eyeMac/Volumes/Arges/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_reanalyze/clean_data/gemini_out_variants_het_and_hom.Rdata')
 ```
 
 # Set up data for modeling
@@ -22,6 +23,7 @@ all_NOT_PATH <- all %>%
   select(variant_id, filter, type, call_rate, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, impact_so, impact_severity, polyphen_score, sift_score, aaf_1kg_afr_float:an_exac_sas, max_aaf_all, pli, pnull, precessive, phylop_100way, canonical, cadd_phred, Genotype, Status, Complicated_Status) %>% 
   filter(Status=='NotPathogenic') %>% 
   unique()
+
 all_set <- rbind(all_PATH, all_NOT_PATH)
 process <- function(df) {
   #cadd phred has NA
@@ -66,16 +68,14 @@ You can feed this into the `Train and Test sets` section below if you are using 
 
 Skip for now
 ```{r, eval = F}
-library(caret)
+library(dummies)
 temp <- ML_set %>% dplyr::select(-filter, -Status, -Complicated_Status)
-dmy <- dummyVars(" ~ .", data = temp, fullRank=T)
-ML_set_dummy <- data.frame(predict(dmy, newdata = temp))
-ML_set_dummy <- ML_set_dummy %>% mutate(Status = ML_set$Status, Complicated_Status = ML_set$Complicated_Status)
+temp <- dummy.data.frame(temp, sep='_')
+ML_set_dummy <- temp %>% mutate(Status = ML_set$Status, Complicated_Status = ML_set$Complicated_Status)
 # recreate for full data
-temp <- rbind(all_PATH, all_NOT_PATH) %>% dplyr::select(-filter, -Status, -Complicated_Status)
-dmy <- dummyVars(" ~ .", data = temp, fullRank=T)
-all_dummy <- data.frame(predict(dmy, newdata = temp))
-all_dummy <- ML_set_dummy %>% mutate(Status = ML_set$Status, Complicated_Status = ML_set$Complicated_Status)
+temp <- all_set %>% dplyr::select(-filter, -Status, -Complicated_Status)
+temp <- dummy.data.frame(temp, sep='_')
+all_dummy <- temp %>% mutate(Status = all_set$Status, Complicated_Status = all_set$Complicated_Status)
 ```
 
 ## Train and Test sets
@@ -83,7 +83,7 @@ Split in training / testing
 
 ```{r}
 set.seed(115470)
-train_set <- ML_set %>% 
+train_set <- ML_set_dummy %>% 
   group_by(Status, Complicated_Status) %>% 
  # filter(!Complicated_Status=='Comp_Het') %>% # remove comp hets for now
   sample_frac(0.5) %>% ungroup()
@@ -132,22 +132,32 @@ cluster <- makeCluster(detectCores() - 1) # leave some cores for me!
 registerDoParallel(cluster)
 
 set.seed(825)
-rfFit <- caret::train(x=train_set %>% dplyr::select(type, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, polyphen_score, sift_score, max_aaf_all, pli, pnull, precessive, phylop_100way, cadd_phred) %>% data.frame(), 
+columns <- c('type_indel','type_snp','num_hom_ref','num_het','num_hom_alt','aaf','is_exonic','is_coding','is_lof','is_splicing','impact_frameshift_variant','impact_inframe_deletion','impact_inframe_insertion','impact_intron_variant','impact_missense_variant','impact_splice_acceptor_variant','impact_splice_donor_variant','impact_splice_region_variant','impact_start_lost','impact_stop_gained','impact_stop_lost','impact_synonymous_variant','impact_upstream_gene_variant','aaf_1kg_all_float','aaf_esp_all','af_exac_all','pli','pnull','precessive','phylop_100way','cadd_phred')
+rfFit <- caret::train(x=train_set %>% 
+                        dplyr::select_(.dots=columns) %>% 
+                        data.frame(), 
                       y = train_set$Status, 
                       #preProcess = c("scale", "center"),
                       method = "rf", 
                       trControl = fitControl)
-bglmFit <- caret::train(x=train_set %>% dplyr::select(type, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, polyphen_score, sift_score, max_aaf_all, pli, pnull, precessive, phylop_100way, cadd_phred) %>% data.frame(), 
+
+bglmFit <- caret::train(x=train_set %>% 
+                        dplyr::select_(.dots=columns) %>% 
+                        data.frame(), 
                       y = train_set$Status, 
                       #preProcess = c("scale", "center"),
                       method = "bayesglm", 
                       trControl = fitControl)
-xgbTreeFit <- caret::train(x=train_set %>% dplyr::select(type, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, polyphen_score, sift_score, max_aaf_all, pli, pnull, precessive, phylop_100way, cadd_phred)  %>% data.frame(), 
+xgbTreeFit <-caret::train(x=train_set %>% 
+                        dplyr::select_(.dots=columns) %>% 
+                        data.frame(), 
                       y = train_set$Status, 
                      # preProcess = c("scale", "center"),
                       method = "xgbTree", 
                       trControl = fitControl)
-svmFit <- caret::train(x=train_set %>% dplyr::select(type, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, polyphen_score, sift_score, max_aaf_all, pli, pnull, precessive, phylop_100way, cadd_phred)  %>% data.frame(), 
+svmFit <- caret::train(x=train_set %>% 
+                        dplyr::select_(.dots=columns) %>% 
+                        data.frame(), 
                       y = train_set$Status, 
                       #preProcess = c("scale", "center"),
                       method = "svmLinear", 
