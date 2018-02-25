@@ -138,7 +138,8 @@ fitControl <- trainControl(## 5-fold CV
  # number = 5,
   classProbs=T,
   savePredictions = T,
-  allowParallel = T)
+  allowParallel = T,
+  summaryFunction = twoClassSummary)
 cluster <- makeCluster(detectCores() - 1) # leave some cores for me!
 registerDoParallel(cluster)
 
@@ -157,7 +158,7 @@ bglmFit <- caret::train(x=train_set %>%
                         data.frame(), 
                       y = train_set$Status, 
                       #preProcess = c("scale", "center"),
-                      method = "bayesglm", 
+                      method = "bayesglm",
                       trControl = fitControl)
 fdaFit <- caret::train(x=train_set %>% 
                         dplyr::select_(.dots=columns) %>% 
@@ -178,7 +179,7 @@ c5.0TreeFit <- caret::train(x=train_set %>%
                         data.frame(), 
                       y = train_set$Status, 
                       #preProcess = c("scale", "center"),
-                      method = "C5.0Tree", 
+                      method = "C5.0Tree",
                       trControl = fitControl)
 stepLDAFit <- caret::train(x=train_set %>% 
                         dplyr::select_(.dots=columns) %>% 
@@ -193,11 +194,14 @@ caddFit <- caret::train(x=train_set %>%
                         data.frame(), 
                       y = train_set$Status, 
                       #preProcess = c("scale", "center"),
-                      method = "bayesglm", 
+                      method = "glm", 
                       trControl = fitControl)
 
 #stopCluster(cluster)
 #registerDoSEQ() # forces R down to single thread - can't do parallel run after this?
+
+my_models <- list(rfFit,bglmFit,xgbTreeFit,c5.0TreeFit,stepLDAFit,caddFit)
+names(my_models) <- c('rfFit','bglmFit','xgbTreeFit','c5.0TreeFit','stepLDAFit','caddFit')
 ```
 
 # ConfusionMatrix your model(s)
@@ -210,7 +214,7 @@ cm_maker <- function(model, data, cutoff=0.5) {
     mutate(Answers = data$Status, Prediction = case_when(Pathogenic > cutoff ~ 'Pathogenic', TRUE ~ 'NotPathogenic'))
   confusionMatrix(data = new_predictions$Prediction, reference = new_predictions$Answers, mode='prec_recall')
 }
-
+#example
 cm_maker(bglmFit, fuller_data, cutoff=0.5)
 ```
 
@@ -218,6 +222,7 @@ cm_maker(bglmFit, fuller_data, cutoff=0.5)
 ```{r}
 library(PRROC)
 
+# precision recall AUC
 aucroc_maker <- function(model, data, cutoff=0.5) {
   new_predictions <- predict(model, data, type = 'prob') %>%
     mutate(Answers = data$Status, Prediction = case_when(Pathogenic > cutoff ~ 'Pathogenic', TRUE ~ 'NotPathogenic'))
@@ -226,6 +231,7 @@ aucroc_maker <- function(model, data, cutoff=0.5) {
            curve = T)
 }
 
+# ROC AUC
 roc_maker <- function(model, data, cutoff=0.5) {
   new_predictions <- predict(model, data, type = 'prob') %>%
     mutate(Answers = data$Status, Prediction = case_when(Pathogenic > cutoff ~ 'Pathogenic', TRUE ~ 'NotPathogenic'))
@@ -234,17 +240,32 @@ roc_maker <- function(model, data, cutoff=0.5) {
            curve = T)
 }
 
-plot(aucroc_maker(rfFit, all_dummy %>% filter(!variant_id %in% test_set$variant_id)))
-plot(aucroc_maker(caddFit, all_dummy %>% filter(!variant_id %in% test_set$variant_id)))
-```
+aucroc_data <- data.frame()
+for (i in names(my_models)){
+  print(my_models[[i]]$method)
+  out <- aucroc_maker(my_models[[i]], fuller_data)
+  out <- out$curve[,1:2] %>% data.frame()
+  colnames(out) <- c('Recall','Precision')
+  out$model <- i
+  aucroc_data <- rbind(aucroc_data, out)
+}
 
-randomForest::varImpPlot(rfFit_tissue$finalModel)
-selectedIndices <- rfFit$pred$mtry == rfFit_tissue$bestTune[1,] #26
+pr <- aucroc_data %>% ggplot(aes(x=Recall, y=Precision, colour=model)) + geom_line() + theme_minimal() + ggsci::scale_color_aaas()
 
-g <- ggplot(rfFit$pred[selectedIndices, ], aes(m=Pathogenic, d=factor(obs, levels=c('Pathogenic','NotPathogenic')))) + 
-  geom_roc(n.cuts=0) + 
-  coord_equal() +
-  style_roc()
 
-g + annotate("text", x=0.75, y=0.25, label=paste("AUC =", round((calc_auc(g))$AUC, 4)))
+roc_data <- data.frame()
+for (i in names(my_models)){
+  print(my_models[[i]]$method)
+  out <- roc_maker(my_models[[i]], fuller_data)
+  out <- out$curve[,1:2] %>% data.frame()
+  colnames(out) <- c('FPR','Sensitivity')
+  out$model <- i
+  roc_data <- rbind(roc_data, out)
+}
+
+roc <- roc_data %>% ggplot(aes(x=FPR, y=Sensitivity, colour=model)) + geom_line() + theme_minimal() + ggsci::scale_color_aaas()
+library(cowplot)
+cowplot::plot_grid(roc, pr)
+
+
 ```
