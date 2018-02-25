@@ -134,8 +134,8 @@ library(MLmetrics)
 
 
 fitControl <- trainControl(## 5-fold CV
- # method = "cv",
- # number = 5,
+  method = "cv",
+  number = 5,
   classProbs=T,
   savePredictions = T,
   allowParallel = T,
@@ -150,7 +150,7 @@ rfFit <- caret::train(x=train_set %>%
                         data.frame(), 
                       y = train_set$Status, 
                       #preProcess = c("scale", "center"),
-                      method = "rf", 
+                      method = "rf", metric='Sens',
                       trControl = fitControl)
 
 bglmFit <- caret::train(x=train_set %>% 
@@ -158,35 +158,35 @@ bglmFit <- caret::train(x=train_set %>%
                         data.frame(), 
                       y = train_set$Status, 
                       #preProcess = c("scale", "center"),
-                      method = "bayesglm",
+                      method = "bayesglm", metric='Sens',
                       trControl = fitControl)
 fdaFit <- caret::train(x=train_set %>% 
                         dplyr::select_(.dots=columns) %>% 
                         data.frame(), 
                       y = train_set$Status, 
                       #preProcess = c("scale", "center"),
-                      method = "fda", 
+                      method = "fda",  metric='Sens',
                       trControl = fitControl)
 xgbTreeFit <-caret::train(x=train_set %>% 
                         dplyr::select_(.dots=columns) %>% 
                         data.frame(), 
                       y = train_set$Status, 
                      # preProcess = c("scale", "center"),
-                      method = "xgbTree", 
+                      method = "xgbTree",  metric='Sens',
                       trControl = fitControl)
 c5.0TreeFit <- caret::train(x=train_set %>% 
                         dplyr::select_(.dots=columns) %>% 
                         data.frame(), 
                       y = train_set$Status, 
                       #preProcess = c("scale", "center"),
-                      method = "C5.0Tree",
+                      method = "C5.0Tree", metric='Sens',
                       trControl = fitControl)
 stepLDAFit <- caret::train(x=train_set %>% 
                         dplyr::select_(.dots=columns) %>% 
                         data.frame(), 
                       y = train_set$Status, 
                       #preProcess = c("scale", "center"),
-                      method = "stepLDA", 
+                      method = "stepLDA",  metric='Sens',
                       trControl = fitControl)
 # cadd only
 caddFit <- caret::train(x=train_set %>% 
