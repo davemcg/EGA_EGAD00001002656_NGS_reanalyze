@@ -56,7 +56,7 @@ all_set <- process(all_set)
 all_PATH <- all_set %>% filter(Status=='Pathogenic')
 # cut down pathogenic to 5x of path
 set.seed(115470)
-all_NOT_PATH__CUT <- all_set %>% filter(Status=='NotPathogenic', max_aaf_all < 0.02) %>% sample_n(nrow(all_PATH_10X) * 5)
+all_NOT_PATH__CUT <- all_set %>% filter(Status=='NotPathogenic', max_aaf_all < 0.02) %>% sample_n(nrow(all_PATH) * 5)
 
 ML_set <- rbind(all_PATH, all_NOT_PATH__CUT)
 
@@ -132,6 +132,12 @@ library(doParallel)
 library(MLmetrics)
 #library(plotROC)
 
+# CV on rf seems to overfit
+fitControl_RF <- trainControl(
+  classProbs=T,
+  savePredictions = T,
+  allowParallel = T,
+  summaryFunction = twoClassSummary)
 
 fitControl <- trainControl(## 5-fold CV
   method = "cv",
@@ -151,7 +157,7 @@ rfFit <- caret::train(x=train_set %>%
                       y = train_set$Status, 
                       #preProcess = c("scale", "center"),
                       method = "rf", metric='Sens',
-                      trControl = fitControl)
+                      trControl = fitControl_RF)
 
 bglmFit <- caret::train(x=train_set %>% 
                         dplyr::select_(.dots=columns) %>% 
@@ -216,6 +222,7 @@ cm_maker <- function(model, data, cutoff=0.5) {
 }
 #example
 cm_maker(bglmFit, fuller_data, cutoff=0.5)
+cm_maker(rfFit, fuller_data, cutoff=0.5)
 ```
 
 # AUC ROC
@@ -243,27 +250,27 @@ roc_maker <- function(model, data, cutoff=0.5) {
 aucroc_data <- data.frame()
 for (i in names(my_models)){
   print(my_models[[i]]$method)
-  out <- aucroc_maker(my_models[[i]], fuller_data)
+  out <- aucroc_maker(my_models[[i]], all_dummy)
   out <- out$curve[,1:2] %>% data.frame()
   colnames(out) <- c('Recall','Precision')
   out$model <- i
   aucroc_data <- rbind(aucroc_data, out)
 }
 
-pr <- aucroc_data %>% ggplot(aes(x=Recall, y=Precision, colour=model)) + geom_line() + theme_minimal() + ggsci::scale_color_aaas()
+pr <- aucroc_data %>% ggplot(aes(x=Recall, y=Precision, colour=model)) + geom_line() + theme_minimal() + ggsci::scale_color_aaas() + ggtitle('prROC')
 
 
 roc_data <- data.frame()
 for (i in names(my_models)){
   print(my_models[[i]]$method)
-  out <- roc_maker(my_models[[i]], fuller_data)
+  out <- roc_maker(my_models[[i]], all_dummy)
   out <- out$curve[,1:2] %>% data.frame()
   colnames(out) <- c('FPR','Sensitivity')
   out$model <- i
   roc_data <- rbind(roc_data, out)
 }
 
-roc <- roc_data %>% ggplot(aes(x=FPR, y=Sensitivity, colour=model)) + geom_line() + theme_minimal() + ggsci::scale_color_aaas()
+roc <- roc_data %>% ggplot(aes(x=FPR, y=Sensitivity, colour=model)) + geom_line() + theme_minimal() + ggsci::scale_color_aaas() + ggtitle('aucROC')
 library(cowplot)
 cowplot::plot_grid(roc, pr)
 
