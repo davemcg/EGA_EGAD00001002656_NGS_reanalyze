@@ -9,49 +9,36 @@ output: html_notebook
 # Load data from stats.Rmd
 ```{r}
 # load('/Volumes/Arges_NFS/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_reanalyze/clean_data/gemini_out_variants_het_and_hom.Rdata')
-load('/Volumes/eyeMac/Volumes/Arges/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_reanalyze/clean_data/gemini_out_variants_het_and_hom.Rdata')
+load('~/Desktop/gemini_out_variants_het_and_hom.Rdata')
 ```
 
 # Set up data for modeling
 ```{r}
 library(tidyverse)
-all_PATH <- all %>% 
-  select(variant_id, filter, type, call_rate, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, impact_so, impact_severity, polyphen_score, sift_score, aaf_1kg_afr_float:an_exac_sas, max_aaf_all, pli, pnull, precessive, phylop_100way,  fitcons_float, lof_z, mis_z, syn_z, gerp_elements, grantham, cadd_phred, Genotype, Status, Complicated_Status) %>% 
+
+all_processed <- all %>% 
+  separate(gene_eyediseaseclass, c('RDGene','DiseaseClass'), sep='_') %>%  #split off RD disease type
+  select(-RDGene) %>% 
+  mutate(impact_severity = case_when(impact_severity == 'HIGH' ~ 3, # convert to integer 
+                                      impact_severity == 'MED' ~ 2, 
+                                      TRUE ~ 1),
+         Status = case_when(Status=='Pathogenic' ~ 'Pathogenic',
+                            TRUE ~ 'NotPathogenic')) %>% 
+  mutate(Status = factor(Status, levels=c('Pathogenic','NotPathogenic'))) %>% 
+  mutate_at(vars(matches('ac_|an_|^n_')), funs(as.integer(.))) %>% # convert columns with ac_|whatever to integer (ac is allele count)
+  mutate_at(vars(matches('af_|dann|revel|mpc|gerp|polyphen_score|sift_score|fitcons_float|gerp_elements|^adj|_z$|^pli$|^pnull$|precessive|^phylop')), funs(as.numeric(.))) %>%  # af is allele frequency
+select(variant_id, Status, Complicated_Status, is_exonic, is_coding, is_lof, is_splicing, impact_severity, polyphen_score, sift_score,  DiseaseClass, aaf_1kg_afr_float:an_exac_sas, fitcons_float, gerp_elements, lof_z:precessive, phylop_100way, grantham, cadd_phred)
+
+all_processed[is.na(all_processed)] <- -1
+
+all_PATH <- all_processed %>% 
   filter(Status=='Pathogenic') %>% 
   unique()
-all_NOT_PATH <- all %>% 
-  select(variant_id, filter, type, call_rate, num_hom_ref, num_het, num_hom_alt, aaf, is_exonic, is_coding, is_lof, is_splicing, impact, impact_so, impact_severity, polyphen_score, sift_score, aaf_1kg_afr_float:an_exac_sas, max_aaf_all, pli, pnull, precessive, phylop_100way,  fitcons_float, lof_z, mis_z, syn_z, gerp_elements, grantham, cadd_phred, Genotype, Status, Complicated_Status) %>% 
+all_NOT_PATH <- all_processed %>% 
   filter(Status=='NotPathogenic') %>% 
   unique()
 
-all_set <- rbind(all_PATH, all_NOT_PATH)
-process <- function(df) {
-  #cadd phred has NA
-  df[is.na(df)] <- 0
-  # convert chr to factor
-  df <- df %>%  mutate_each_( funs(as.factor(.)), names( .[,sapply(., is.character)] ))
-  # Fix numeric that are fctr
-  df$polyphen_score <- as.numeric(df$polyphen_score)
-  df$sift_score <- as.numeric(df$sift_score)
-  df$adj_exp_lof <- as.numeric(df$adj_exp_lof)
-  df$adj_exp_mis <- as.numeric(df$adj_exp_mis)
-  df$adj_exp_syn <- as.numeric(df$adj_exp_syn)
-  df$pli <- as.numeric(df$pli)
-  df$pnull <- as.numeric(df$pnull)
-  df$precessive <- as.numeric(df$precessive)
-  df$phylop_100way <- as.numeric(df$phylop_100way)
-  df$fitcons_float <- as.numeric(df$fitcons_float)
-  df$lof_z <- as.numeric(df$lof_z)
-  df$mis_z <- as.numeric(df$mis_z)
-  df$syn_z <- as.numeric(df$syn_z)
-  df$gerp_elements <- as.numeric(df$gerp_elements)
-  df$grantham <- as.numeric(df$grantham)
-  df$Status <- factor(df$Status, levels=c('Pathogenic','NotPathogenic'))
-  df
-}
-
-all_set <- process(all_set)
-
+all_set <- all_processed
 
 all_PATH <- all_set %>% filter(Status=='Pathogenic')
 # cut down pathogenic to 5x of path
@@ -59,7 +46,6 @@ set.seed(115470)
 all_NOT_PATH__CUT <- all_set %>% filter(Status=='NotPathogenic', max_aaf_all < 0.02) %>% sample_n(nrow(all_PATH) * 5)
 
 ML_set <- rbind(all_PATH, all_NOT_PATH__CUT)
-
 
 
 ```
@@ -73,11 +59,11 @@ You can feed this into the `Train and Test sets` section below if you are using 
 
 ```{r, eval = F}
 library(dummies)
-temp <- ML_set %>% dplyr::select(-filter, -Status, -Complicated_Status)
+temp <- ML_set %>% dplyr::select(-Status, -Complicated_Status)
 temp <- dummy.data.frame(temp, sep='_')
 ML_set_dummy <- temp %>% mutate(Status = ML_set$Status, Complicated_Status = ML_set$Complicated_Status)
 # recreate for full data
-temp <- all_set %>% dplyr::select(-filter, -Status, -Complicated_Status)
+temp <- all_set %>% dplyr::select(-Status, -Complicated_Status)
 temp <- dummy.data.frame(temp, sep='_')
 all_dummy <- temp %>% mutate(Status = all_set$Status, Complicated_Status = all_set$Complicated_Status)
 ```
@@ -89,23 +75,27 @@ indices <- findCorrelation(correlated)
 colnames(all_dummy %>% select(-Status, -Complicated_Status))[indices]
 ```
 
-## Train and Test sets
-Split in training / testing
+## Train and Validate and Test sets
+Split in training / validating / testing
 
 ```{r}
 set.seed(115470)
 train_set <- ML_set_dummy %>% 
   group_by(Status, Complicated_Status) %>% 
  # filter(!Complicated_Status=='Comp_Het') %>% # remove comp hets for now
-  sample_frac(0.5) %>% ungroup()
+  sample_frac(0.33) %>% ungroup()
 # remove no variance columns
 #var_columns <- colnames(train_set)[apply(train_set, MARGIN = 2, function(x) var(x) > 0)]
 #var_columns <- var_columns[!is.na(var_columns)]
 #train_set <- train_set[,c(var_columns, 'Status', 'Complicated_Status')]
 
+validate_set <- ML_set_dummy %>% 
+  filter(!variant_id %in% train_set$variant_id) %>% 
+  group_by(Status, Complicated_Status) %>% 
+  sample_frac(0.5) %>% ungroup()
 
 test_set <- ML_set_dummy %>% 
-  filter(!variant_id %in% train_set$variant_id)
+  filter(!variant_id %in% c(train_set$variant_id, validate_set$variant_id))
 # remove no variance columns
 #var_columns <- colnames(test_set)[apply(test_set, MARGIN = 2, function(x) var(x) > 0)]
 #var_columns <- var_columns[!is.na(var_columns)]
@@ -149,13 +139,9 @@ fitControl <- trainControl(## 5-fold CV
 cluster <- makeCluster(detectCores() - 1) # leave some cores for me!
 registerDoParallel(cluster)
 
-set.seed(825)
-columns <- c('type_indel','type_snp','num_hom_ref','num_het','num_hom_alt','aaf','is_lof','is_splicing','impact_frameshift_variant','impact_inframe_deletion','impact_inframe_insertion','impact_intron_variant','impact_missense_variant','impact_splice_acceptor_variant','impact_splice_donor_variant','impact_splice_region_variant','impact_start_lost','impact_stop_gained','impact_stop_lost','impact_synonymous_variant','aaf_1kg_all_float','aaf_esp_all','af_exac_all','pli','pnull','precessive','phylop_100way','cadd_phred', 'polyphen_score', 'impact_severity_HIGH', 'impact_severity_LOW', 'impact_severity_MED', 'polyphen_score', 'sift_score', 'fitcons_float','lof_z','mis_z','syn_z','gerp_elements','grantham')
-rfFit <- caret::train(x=train_set %>% 
-                        dplyr::select_(.dots=columns) %>% 
-                        data.frame(), 
-                      y = train_set$Status, 
-                      #preProcess = c("scale", "center"),
+
+rfFit <- caret::train(Status ~ ., data=train_set %>% select(-Complicated_Status), 
+                      preProcess = c("scale", "center"),
                       method = "rf", metric='Sens',
                       trControl = fitControl_RF)
 
