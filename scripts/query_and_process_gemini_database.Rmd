@@ -1,0 +1,111 @@
+---
+title: "Build and process UK10K gemini genotypes"
+output: html_notebook
+---
+
+# Load in metadata
+Carss et al. supplementary
+```{r}
+library(tidyverse)
+metadata <- readxl::read_excel(path='~/git/EGA_EGAD00001002656_NGS_reanalyze/data/1-s2.0-S0002929716305274-mmc3.xlsx') %>% mutate(Sample=Patient)
+metadata
+```
+
+# Samples in gemini database
+Queried with `gemini query -q 'select * from samples' EGAD00001002656.GATK.PED_EGAD00001002656.gemini.db | cut -f2`
+```{r}
+present_samples <- scan('~/git/EGA_EGAD00001002656_NGS_reanalyze/data/present_samples.txt', what = 'character')
+```
+
+# Create gemini query
+Didn't create gemini database with PED labelling which samples are 'solved', so I can't query on that. I'll have to build a fairly long gt-filter query including each solved sample
+```{r}
+library(here)
+solved_samples <- metadata %>% 
+  filter(Status!='Unsolved') %>% 
+  filter(Sample %in% present_samples) %>% 
+  pull(Sample) %>% 
+  unique()
+
+#hom
+gt_filter_hom <- solved_samples %>% 
+  paste0('gt_types.',.,' == HOM_ALT') %>% 
+  paste0(., collapse = ' OR ')
+
+hom_query <- paste0("gemini query --show-samples --header -q \"select * from variants where aaf < 0.05 and filter is NULL AND (aaf_esp_all < 0.01 AND aaf_1kg_all_float < 0.01 AND af_exac_all < 0.01  AND (is_coding=1 OR is_splicing=1)) OR impact_severity='HIGH' OR clinvar_sig LIKE '%patho%'\" --gt-filter \"",
+                    gt_filter_hom,
+                    "\" EGAD00001002656.GATK.PED_EGAD00001002656.gemini.db | bgzip -c > EGAD.homs.gz &")
+
+#cat(hom_query)
+
+#cat("\n\n")
+
+#het
+gt_filter_het <- solved_samples %>% 
+  paste0('gt_types.',.,' == HET') %>% 
+  paste0(., collapse = ' OR ')
+
+het_query <- paste0("gemini query --show-samples --header -q \"select * from variants where aaf < 0.05 and filter is NULL AND (aaf_esp_all < 0.0001 AND aaf_1kg_all_float < 0.0001 AND af_exac_all < 0.0001  AND (is_coding=1 OR is_splicing=1)) OR impact_severity='HIGH' OR clinvar_sig LIKE '%patho%'\" --gt-filter \"",
+                    gt_filter_het,
+                    "\" EGAD00001002656.GATK.PED_EGAD00001002656.gemini.db | bgzip -c > EGAD.hets.gz &")
+
+#cat(het_query)
+
+write('#!/bin/bash', file = here('scripts/gemini_query_calls.sh'))
+write('module load gemini', file = here('scripts/gemini_query_calls.sh'), append = T)
+write(het_query, file = here('scripts/gemini_query_calls.sh'), append = T)
+write(hom_query, file = here('scripts/gemini_query_calls.sh'), append = T)
+```
+
+# Load in result from gemini query above
+```{r}
+library(data.table)
+het <- fread('gzcat ~/EGAD.hets.gz')
+hom <- fread('gzcat ~/EGAD.homs.gz')
+```
+
+# Reshape
+We have a column (hom_alt or het)_samples which has a comma separate list of samples with the genotype. I think we should split this up and get a new row for each sample. 
+```{r}
+hom_long <- hom %>% 
+  mutate(Sample = str_split(hom_alt_samples, ","), Genotype = 'Hom') %>%  # split with str_split to create a list
+  unnest(Sample, .drop=F) # unnest will spread the list, creating a row for each entry
+
+het_long <- het %>% 
+  mutate(Sample = str_split(het_samples, ","), Genotype = 'Het') %>%  # split with str_split to create a list
+  unnest(Sample, .drop=F) # unnest will spread the list, creating a row for each entry
+
+
+all <- rbind(hom_long, het_long)
+```
+
+# ID Compound Het
+Logic is solved (or partially solved), has HGVSc, and genotype is 0/1
+```{r}
+sample_gene_comp_het <- metadata %>% filter(Status!='Unsolved'  & Variant_HGVSc!='NA' & GT=='0/1') %>% group_by(Sample, Gene) %>% summarise(Count=n()) %>% filter(Count>1) 
+metadata <- left_join(metadata, sample_gene_comp_het) %>% mutate(Comp_Het_Path = case_when(Count >= 2 ~ 'CH', 
+                                                                                           TRUE ~ 'No')) %>% 
+  select(-Count)
+```
+
+# Label variants as pathogenic
+Also do complicated status (label comp het, dom, and recessive)
+
+Save for further analysis (machine learning!)
+```{r}
+uk10k_gemini_rare_variants <- all %>% 
+  mutate(Variant_genomic = paste0(chrom, ':', start + 1, ref, '>', alt)) %>% 
+  mutate(Status = case_when(Variant_genomic %in% (metadata %>% filter(Status != 'Unsolved') %>% pull(Variant_genomic)) ~ 'Pathogenic',
+                            TRUE ~ 'NotPathogenic')) %>% 
+  mutate(Complicated_Status = case_when(Variant_genomic %in% (metadata %>% filter(Status != 'Unsolved' & Comp_Het_Path == 'CH') %>% pull(Variant_genomic)) ~ 'Comp_Het',
+                                        Variant_genomic %in% (metadata %>% filter(Status != 'Unsolved' & GT=='0/1') %>% pull(Variant_genomic)) ~ 'AD',
+                                        Variant_genomic %in% (metadata %>% filter(Status != 'Unsolved' & GT=='1/1') %>% pull(Variant_genomic)) ~ 'AR',
+                                        TRUE ~ 'NotPathogenic'))
+
+
+output_file <- '/Volumes/Arges_NFS/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_reanalyze/clean_data/uk10k_gemini_rare_variants.Rdata'
+if(!file.exists(output_file)){
+  save(all, file = output_file)
+}
+```
+
