@@ -100,7 +100,8 @@ uk10k_gemini_rare_variants <- all %>%
   mutate(Complicated_Status = case_when(Variant_genomic %in% (metadata %>% filter(Status != 'Unsolved' & Comp_Het_Path == 'CH') %>% pull(Variant_genomic)) ~ 'Comp_Het',
                                         Variant_genomic %in% (metadata %>% filter(Status != 'Unsolved' & GT=='0/1') %>% pull(Variant_genomic)) ~ 'AD',
                                         Variant_genomic %in% (metadata %>% filter(Status != 'Unsolved' & GT=='1/1') %>% pull(Variant_genomic)) ~ 'AR',
-                                        TRUE ~ 'NotPathogenic'))
+                                        TRUE ~ 'NotPathogenic')) %>% 
+  nest(Sample, .key='Samples')
 
 
 output_file <- '/Volumes/Arges_NFS/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_reanalyze/clean_data/uk10k_gemini_rare_variants.Rdata'
