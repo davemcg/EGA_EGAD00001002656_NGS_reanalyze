@@ -34,7 +34,7 @@ gt_filter_hom <- solved_samples %>%
 
 hom_query <- paste0("gemini query --show-samples --header -q \"select * from variants where aaf < 0.05 and filter is NULL AND (aaf_esp_all < 0.01 AND aaf_1kg_all_float < 0.01 AND af_exac_all < 0.01  AND (is_coding=1 OR is_splicing=1)) OR impact_severity='HIGH' OR clinvar_sig LIKE '%patho%'\" --gt-filter \"",
                     gt_filter_hom,
-                    "\" EGAD00001002656.GATK.PED_EGAD00001002656.gemini.db | bgzip -c > EGAD.homs.gz &")
+                    "\" EGAD00001002656.GATK.PED_EGAD00001002656.gemini.db | bgzip -c > EGAD.homs.gz")
 
 #cat(hom_query)
 
@@ -47,7 +47,7 @@ gt_filter_het <- solved_samples %>%
 
 het_query <- paste0("gemini query --show-samples --header -q \"select * from variants where aaf < 0.05 and filter is NULL AND (aaf_esp_all < 0.0001 AND aaf_1kg_all_float < 0.0001 AND af_exac_all < 0.0001  AND (is_coding=1 OR is_splicing=1)) OR impact_severity='HIGH' OR clinvar_sig LIKE '%patho%'\" --gt-filter \"",
                     gt_filter_het,
-                    "\" EGAD00001002656.GATK.PED_EGAD00001002656.gemini.db | bgzip -c > EGAD.hets.gz &")
+                    "\" EGAD00001002656.GATK.PED_EGAD00001002656.gemini.db | bgzip -c > EGAD.hets.gz")
 
 #cat(het_query)
 
@@ -100,7 +100,8 @@ uk10k_gemini_rare_variants <- all %>%
   mutate(Complicated_Status = case_when(Variant_genomic %in% (metadata %>% filter(Status != 'Unsolved' & Comp_Het_Path == 'CH') %>% pull(Variant_genomic)) ~ 'Comp_Het',
                                         Variant_genomic %in% (metadata %>% filter(Status != 'Unsolved' & GT=='0/1') %>% pull(Variant_genomic)) ~ 'AD',
                                         Variant_genomic %in% (metadata %>% filter(Status != 'Unsolved' & GT=='1/1') %>% pull(Variant_genomic)) ~ 'AR',
-                                        TRUE ~ 'NotPathogenic'))
+                                        TRUE ~ 'NotPathogenic')) %>% 
+  nest(Sample, .key='Samples')
 
 
 output_file <- '/Volumes/Arges_NFS/PROJECTS/mcgaughey/EGA_EGAD00001002656_NGS_reanalyze/clean_data/uk10k_gemini_rare_variants.Rdata'
